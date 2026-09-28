@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sitescout}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sitescout_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-sitescout}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sitescout} -d ${POSTGRES_DB:-sitescout}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sitescout}:${POSTGRES_PASSWORD:-sitescout_dev_password}@postgres:5432/${POSTGRES_DB:-sitescout}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sitescout}:${POSTGRES_PASSWORD:-sitescout_dev_password}@postgres:5432/${POSTGRES_DB:-sitescout}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m app.jobs.worker
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    depends_on:
+      - api
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  postgres-data:
+  redis-data:
+  frontend-node-modules:
