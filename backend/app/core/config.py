@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     location_cache_ttl_seconds: int = 86400
     external_cache_ttl_seconds: int = 3600
     stale_cache_ttl_seconds: int = 604800
+    allow_simulated_signal_fallback: bool = True
     store_service_url: str | None = None
     store_service_token: str | None = None
     rq_sync: bool = False

@@ -5,6 +5,7 @@ import httpx
 
 from app.core.config import Settings
 from app.m1_areas import adapters
+from app.m1_areas.geometry import normalize_area_geometry
 
 
 POLYGON = {
@@ -91,3 +92,35 @@ def test_upstream_failure_uses_stale_cached_geography(monkeypatch) -> None:
 
     assert result.source_id == "osm:relation:55:place"
     assert result.cache_age_seconds is not None
+
+
+def test_grid_signal_query_uses_encoded_overpass_query(monkeypatch) -> None:
+    captured = {}
+
+    def get(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response({"elements": []})
+
+    monkeypatch.setattr(adapters, "_cache_client", lambda _settings: (_ for _ in ()).throw(ConnectionError()))
+    monkeypatch.setattr(adapters.httpx, "get", get)
+
+    snapshot = adapters.fetch_osm_signals(normalize_area_geometry(POLYGON), "Selected Chennai cells (1)", Settings())
+
+    assert captured["params"]["data"].startswith("[out:json]")
+    assert captured["headers"]["User-Agent"].startswith("Savo-SiteScout/")
+    assert snapshot.evidence_kind == "live"
+
+
+def test_grid_signal_query_uses_labelled_demo_fallback_after_upstream_failure(monkeypatch) -> None:
+    monkeypatch.setattr(adapters, "_cache_client", lambda _settings: (_ for _ in ()).throw(ConnectionError()))
+    monkeypatch.setattr(
+        adapters.httpx, "get", lambda *args, **kwargs: (_ for _ in ()).throw(httpx.ConnectError("down")),
+    )
+
+    snapshot = adapters.fetch_osm_signals(
+        normalize_area_geometry(POLYGON), "Selected Chennai cells (1)", Settings(),
+    )
+
+    assert snapshot.evidence_kind == "demo"
+    assert snapshot.source == "Simulated M1 fallback baseline"
+    assert "not observations" in snapshot.limitations

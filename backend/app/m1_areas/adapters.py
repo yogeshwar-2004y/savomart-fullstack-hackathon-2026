@@ -11,7 +11,7 @@ from redis import Redis
 from shapely.geometry import MultiPolygon, Point, mapping, shape
 
 from app.core.config import Settings, get_settings
-from app.m1_areas.geometry import CHENNAI_BOUNDS, normalize_area_geometry, normalize_chennai_point
+from app.m1_areas.geometry import CHENNAI_BOUNDS, area_sq_km, normalize_area_geometry, normalize_chennai_point
 from app.m1_areas.schemas import AreaSearchResult
 
 
@@ -287,7 +287,12 @@ def fetch_osm_signals(geometry: MultiPolygon, area_name: str, settings: Settings
       nwr[highway~\"^(primary|secondary|tertiary)$\"]({bbox});
     );out center tags;"""
     try:
-        response = httpx.post(settings.overpass_url, content=query, timeout=35)
+        response = httpx.get(
+            settings.overpass_url,
+            params={"data": query},
+            headers={"User-Agent": "Savo-SiteScout/0.1 (Chennai area intelligence)"},
+            timeout=35,
+        )
         response.raise_for_status()
         snapshot = _parse_overpass(response.json(), geometry)
         snapshot.cache_key = key
@@ -313,6 +318,26 @@ def fetch_osm_signals(geometry: MultiPolygon, area_name: str, settings: Settings
                 evidence_kind="demo", limitations=(
                     "Demo snapshot used because live Overpass data was unavailable. Counts are mapped features, "
                     "not people, households, footfall, or complete business inventories."
+                ), cache_key=key,
+            )
+        if settings.allow_simulated_signal_fallback:
+            size = area_sq_km(geometry)
+            centroid = geometry.centroid
+            return SignalSnapshot(
+                counts={
+                    "residential": round(24 * size, 2), "businesses": round(16 * size, 2),
+                    "amenities": round(8 * size, 2), "access": round(7 * size, 2),
+                    "competition": round(2 * size, 2),
+                },
+                hotspots=[{
+                    "name": "Area centre demo validation point", "lat": centroid.y,
+                    "lon": centroid.x, "signals": 0,
+                }],
+                fetched_at=datetime.now(UTC), source="Simulated M1 fallback baseline", source_url=None,
+                evidence_kind="demo", limitations=(
+                    "Live Overpass data and an eligible cache snapshot were unavailable. Values are a fixed "
+                    "simulation for workflow testing, not observations about this area and not suitable for a "
+                    "site decision. Retry later for sourced OpenStreetMap evidence."
                 ), cache_key=key,
             )
         raise RuntimeError(f"OpenStreetMap enrichment failed: {exc.__class__.__name__}") from exc

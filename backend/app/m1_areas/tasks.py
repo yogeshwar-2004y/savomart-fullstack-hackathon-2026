@@ -94,7 +94,12 @@ def run_area_analysis(job_id: str) -> str:
         if job:
             job.status = "failed"
             job.progress = 0
-            job.status_detail = "Analysis failed. Retry after checking external services."
+            job.status_detail = (
+                "OpenStreetMap enrichment is temporarily unavailable. Retry this job; an eligible cached snapshot "
+                "will be used automatically."
+                if isinstance(exc, RuntimeError) and "OpenStreetMap enrichment failed" in str(exc)
+                else "Analysis failed. Retry after checking the worker and external services."
+            )
             job.error_code = exc.__class__.__name__
             job.retryable = job.attempts < 3
             if job.analysis_id:
