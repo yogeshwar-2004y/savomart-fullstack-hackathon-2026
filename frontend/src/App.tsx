@@ -26,13 +26,13 @@ export function App() {
         <div className="brand-mark">S</div>
         <div>
           <p className="eyebrow">Savo SiteScout</p>
-          <h1>Area Intelligence</h1>
+          <h1>Area Scout Intelligence</h1>
         </div>
       </header>
 
       <section className="status-band" aria-label="Service health">
         <div>
-          <p className="eyebrow">End-to-end check</p>
+          <p className="eyebrow">Entire check</p>
           <h2>{health ? health.service : "Connecting to backend"}</h2>
         </div>
         <div className="health-grid">

@@ -4,7 +4,7 @@ export type DependencyStatus = {
 };
 
 export type HealthResponse = {
-  status: "ok" | "degraded";
+  status: "ok" | "degraded" | "error";
   service: string;
   database: DependencyStatus;
   redis: DependencyStatus;
