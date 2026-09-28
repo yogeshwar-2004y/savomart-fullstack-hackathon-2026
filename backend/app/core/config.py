@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     queue_name: str = "sitescout-jobs"
     nominatim_url: str = "https://nominatim.openstreetmap.org"
     overpass_url: str = "https://overpass-api.de/api/interpreter"
+    ogd_pincode_boundaries_path: str | None = None
+    chennai_pincode_feature_url: str | None = "https://services7.arcgis.com/8phUg7DrlXpKgLyA/ArcGIS/rest/services/Chennai_MarketVisualization_WFL1/FeatureServer/11"
+    location_cache_ttl_seconds: int = 86400
     external_cache_ttl_seconds: int = 3600
     stale_cache_ttl_seconds: int = 604800
     store_service_url: str | None = None

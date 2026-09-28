@@ -3,13 +3,35 @@ export type GeoJSONGeometry = {
   coordinates: number[][][] | number[][][][];
 };
 
-export type AreaSearchResult = {
+export type GeoJSONPoint = { type: "Point"; coordinates: [number, number] };
+
+export type GeographyProvenance = {
+  source: string;
+  source_id: string;
+  source_url?: string | null;
+  source_license?: string | null;
+  boundary_type: "official" | "osm-derived" | "third-party" | "point-only" | "user-selected" | "approximate";
+  lookup_at: string;
+  is_official: boolean;
+  is_approximate: boolean;
+  approximation_warning?: string | null;
+  resolver_cache_age_seconds?: number | null;
+};
+
+export type AreaSearchResult = GeographyProvenance & {
   display_name: string;
   selection_method: "locality" | "pincode";
   query: string;
-  geometry: GeoJSONGeometry;
-  source: string;
+  geometry: GeoJSONGeometry | GeoJSONPoint;
+  cache_age_seconds?: number | null;
   limitations?: string | null;
+};
+
+export type AreaSelection = GeographyProvenance & {
+  name: string;
+  query?: string;
+  selection_method: "locality" | "pincode" | "cells" | "radius";
+  geometry: GeoJSONGeometry;
 };
 
 export type Job = {
@@ -63,7 +85,7 @@ export type ReportSummary = {
   created_at: string;
 };
 
-export type AreaReport = ReportSummary & {
+export type AreaReport = ReportSummary & Omit<GeographyProvenance, "lookup_at"> & {
   analysis_id: string;
   title: string;
   summary: string;
@@ -71,6 +93,7 @@ export type AreaReport = ReportSummary & {
   used_cached_evidence: boolean;
   cache_age_seconds?: number | null;
   selection_method: string;
+  boundary_lookup_at: string;
   area_sq_km: number;
   geometry: GeoJSONGeometry;
   metrics: Metric[];
@@ -101,7 +124,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const searchAreas = (query: string, method: "locality" | "pincode") =>
   request<AreaSearchResult[]>(`/areas/search?q=${encodeURIComponent(query)}&method=${method}`);
 
-export const startAnalysis = (area: { name: string; query?: string; selection_method: string; geometry: GeoJSONGeometry }) =>
+export const createApproximateRadius = (result: AreaSearchResult, radius_m: number) =>
+  request<AreaSelection>("/areas/approximate-radius", {
+    method: "POST", body: JSON.stringify({
+      point: result.geometry, radius_m, display_name: result.display_name, query: result.query,
+      source_id: result.source_id, source: result.source, source_url: result.source_url,
+      source_license: result.source_license, lookup_at: result.lookup_at,
+      resolver_cache_age_seconds: result.cache_age_seconds
+    })
+  });
+
+export const startAnalysis = (area: AreaSelection) =>
   request<{ analysis_id: string; job_id: string; status: Job["status"] }>("/areas/analyses", {
     method: "POST", body: JSON.stringify({ area })
   });

@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-SelectionMethod = Literal["locality", "pincode", "cells"]
+SelectionMethod = Literal["locality", "pincode", "cells", "radius"]
 JobStatus = Literal["queued", "fetching", "scoring", "completed", "failed"]
 
 
@@ -14,6 +14,14 @@ class AreaSearchResult(BaseModel):
     query: str
     geometry: dict[str, Any]
     source: str
+    source_id: str
+    source_url: str | None = None
+    source_license: str | None = None
+    boundary_type: Literal["official", "osm-derived", "third-party", "point-only"]
+    lookup_at: datetime
+    is_official: bool = False
+    is_approximate: bool = False
+    cache_age_seconds: int | None = None
     limitations: str | None = None
 
 
@@ -22,6 +30,33 @@ class AreaSelection(BaseModel):
     query: str | None = Field(default=None, max_length=160)
     selection_method: SelectionMethod
     geometry: dict[str, Any]
+    source: str
+    source_id: str
+    source_url: str | None = None
+    source_license: str | None = None
+    boundary_type: Literal["official", "osm-derived", "third-party", "user-selected", "approximate"]
+    lookup_at: datetime
+    is_official: bool = False
+    is_approximate: bool = False
+    approximation_warning: str | None = None
+    resolver_cache_age_seconds: int | None = None
+
+
+class RadiusAreaRequest(BaseModel):
+    point: dict[str, Any]
+    radius_m: int = Field(ge=500, le=5000)
+    display_name: str = Field(min_length=2, max_length=200)
+    query: str = Field(min_length=2, max_length=120)
+    source_id: str = Field(min_length=3, max_length=200)
+    source: str = Field(min_length=2, max_length=160)
+    source_url: str | None = None
+    source_license: str | None = None
+    lookup_at: datetime
+    resolver_cache_age_seconds: int | None = None
+
+
+class RadiusAreaResponse(AreaSelection):
+    pass
 
 
 class AnalysisCreate(BaseModel):
@@ -99,6 +134,16 @@ class AreaReportResponse(ReportSummaryResponse):
     selection_method: str
     area_sq_km: float
     geometry: dict[str, Any]
+    source: str
+    source_id: str
+    source_url: str | None
+    source_license: str | None
+    boundary_type: str
+    boundary_lookup_at: datetime
+    is_official: bool
+    is_approximate: bool
+    approximation_warning: str | None
+    resolver_cache_age_seconds: int | None
     metrics: list[MetricEvidenceResponse]
     suggestions: list[SuggestionResponse]
 

@@ -14,7 +14,7 @@ docker compose up --build -d
 docker compose exec api alembic upgrade head
 ```
 
-Open `http://localhost:5173`, keep the demo role set to **BD Manager**, search for `Velachery`, select the result, and click **Start analysis**. The API is at `http://localhost:8000`; interactive API docs are at `http://localhost:8000/docs`.
+Open `http://localhost:5173`, keep the demo role set to **BD Manager**, submit a search for `Velachery`, choose an OSM boundary (or an explicitly approximate radius when only a point is returned), and click **Start analysis**. The API is at `http://localhost:8000`; interactive API docs are at `http://localhost:8000/docs`.
 
 Useful checks:
 
@@ -29,8 +29,10 @@ Stop with `docker compose down`. Data volumes are retained. Use `docker compose 
 
 ## M1 flow
 
-- Search Chennai through OpenStreetMap Nominatim by locality or six-digit pincode. Velachery/600042 has a bundled, simplified OSM-derived boundary fallback for offline demos.
-- Select one or more 0.01-degree cells directly on the Leaflet map. The selected `MultiPolygon` is validated against Greater Chennai bounds.
+- Locality search is submitted explicitly to OpenStreetMap Nominatim and cached; there is no search-as-you-type or grid geocoding. OSM polygons retain their `osm_type`, `osm_id`, and category as a stable source ID.
+- A Nominatim point is never treated as a boundary. The UI requires a clearly labeled 1, 2, or 3 km approximate PostGIS radius, or a user-selected map area.
+- Six-digit PIN searches first inspect the configured Department of Posts OGD boundary file. A matching polygon is labeled official; if it is unavailable, any Nominatim result follows the same polygon/point rules as locality search.
+- Select one or more 0.01-degree cells directly on the Leaflet map. The selected `MultiPolygon` is validated against Greater Chennai bounds and receives a stable SHA-256 source ID on the server.
 - `POST /api/v1/areas/analyses` saves the area and job in PostgreSQL and returns `202 Accepted` with an analysis ID and job ID.
 - The Redis/RQ worker records `queued -> fetching -> scoring -> completed` in PostgreSQL. Failures are saved with a useful message and can be retried up to three attempts.
 - Reports, metric provenance, suggestions, source snapshots, and geometry are saved in PostgreSQL/PostGIS. Redis is only the queue and short-lived external-response cache.
@@ -40,13 +42,15 @@ The demo role header is `X-Demo-Role: bd-manager`. This is intentionally lightwe
 
 ## Data sources and evidence labels
 
-- **OpenStreetMap Nominatim** supplies live locality and pincode search geometry, subject to its usage policy and contributor coverage.
+- **OpenStreetMap Nominatim** supplies submitted locality lookup results. Polygon results are labeled `osm-derived`; point results require a radius or map selection. The public endpoint is configurable, results are cached for 24 hours, stale entries can be used for seven days after an upstream failure, and requests identify this application. See the [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) and [search API](https://nominatim.org/release-docs/latest/api/Search/).
+- **OGD India / Department of Posts** is the preferred pincode-boundary source. Download `All India Pincode Boundary Geo JSON` from the [official OGD catalog](https://www.data.gov.in/catalog/all-india-pincode-boundary-geo-json), place the GeoJSON or GeoJSONL file in `backend/data/`, and set `OGD_PINCODE_BOUNDARIES_PATH=/app/data/<filename>`. The source is released under the Government Open Data License - India. The app does not silently substitute a geocoded point for a PIN polygon.
+- **Public Chennai pincode feature layer** provides configurable fallback coverage, including `600042`. It is labeled `third-party` and non-official because its publisher metadata does not establish Department of Posts authority. Set `CHENNAI_PINCODE_FEATURE_URL=` to disable it. A configured, matching OGD file always wins.
 - **OpenStreetMap Overpass API** supplies mapped buildings, shops, offices, amenities, transit features, and competitors inside the selected geometry. The worker filters bounding-box responses against the selected polygon.
 - **Savomart operational store service** is supported only when `STORE_SERVICE_URL` and `STORE_SERVICE_TOKEN` are supplied server-side in ignored `.env`. No credentials are committed or exposed to the browser.
-- **Bundled demo evidence** keeps the Velachery walkthrough usable if Overpass or the store service is unavailable. It is labeled `demo` in every metric and suggestion. Bundled store points are illustrative, not current operational-store claims.
+- **Bundled demo evidence** keeps the Velachery scoring walkthrough usable if Overpass or the store service is unavailable. It is labeled `demo/simulated` beside affected values. Bundled store points are illustrative, not current operational-store claims. There is no bundled demo geography fallback.
 - **Redis cache** keeps successful OSM responses for one hour and an eligible stale snapshot for seven days. If an upstream failure causes stale evidence to be used, the report is labeled `cached` and shows its age.
 
-OpenStreetMap counts are mapped-feature coverage signals. They are **not** population, household, footfall, income, or complete business counts. M1 records people data as unavailable with zero scoring weight. Residential-building density is labeled as a homes proxy, never converted into people.
+The UI legend distinguishes real geography, real sourced data, proxy data, and demo/simulated data. OpenStreetMap counts are mapped-feature coverage signals. They are **not** population, household, footfall, income, or complete business counts. M1 records people data as unavailable with zero scoring weight. Residential-building density is labeled as a homes proxy, never converted into people. A real boundary does not make simulated business or store inputs real.
 
 ## Scoring rules
 
@@ -87,7 +91,9 @@ npm run build
 
 ## Current limitations
 
-- OSM completeness differs by neighborhood, Overpass can be slow, and pincode boundary availability varies. Retry is explicit; Velachery has the only bundled area/evidence fallback.
+- OSM locality boundaries reflect contributor coverage and may represent neighborhoods inconsistently. Nominatim point-only results require an explicitly approximate radius or map selection.
+- PIN boundaries require a locally configured official OGD file because the OGD portal download flow is not a stable anonymous runtime API. Unsupported or missing PIN polygons are reported rather than invented.
+- Location cache entries live for 24 hours; stale cached lookups are eligible for seven days only after an upstream failure, and their age is shown. Overpass signal cache remains one hour with the same seven-day stale ceiling.
 - Map cells are geographic squares rather than a city-wide precomputed grid. This is deliberate: there is no mandatory H3 heatmap.
 - Straight-line store distance is used instead of routing time. Scouting suggestions are mapped activity clusters that require field validation.
 - No approved Census/OGD demographic dataset has been normalized to the selected boundary yet, so people metrics are unavailable and excluded from scoring.

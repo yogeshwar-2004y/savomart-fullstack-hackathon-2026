@@ -1,5 +1,6 @@
 import hashlib
 import json
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from math import asin, cos, radians, sin, sqrt
@@ -10,7 +11,7 @@ from redis import Redis
 from shapely.geometry import MultiPolygon, Point, mapping, shape
 
 from app.core.config import Settings, get_settings
-from app.m1_areas.geometry import VELACHERY_GEOMETRY, normalize_area_geometry
+from app.m1_areas.geometry import CHENNAI_BOUNDS, normalize_area_geometry, normalize_chennai_point
 from app.m1_areas.schemas import AreaSearchResult
 
 
@@ -90,6 +91,30 @@ def _cache_write(redis: Redis, key: str, snapshot: SignalSnapshot, settings: Set
 def search_chennai_areas(query: str, method: str, settings: Settings | None = None) -> list[AreaSearchResult]:
     settings = settings or get_settings()
     normalized = query.strip()
+    if method == "pincode":
+        if not normalized.isdigit() or len(normalized) != 6:
+            return []
+        official = _search_ogd_pincodes(normalized, settings)
+        if official:
+            return official
+    cache_key = f"sitescout:location:{method}:{normalized.casefold()}"
+    redis: Redis | None = None
+    try:
+        redis = _cache_client(settings)
+        cached = _read_location_cache(redis, cache_key)
+        if cached:
+            return cached
+    except Exception:
+        redis = None
+    if method == "pincode":
+        sourced = _search_public_pincode_layer(normalized, settings)
+        if sourced:
+            if redis:
+                try:
+                    _write_location_cache(redis, cache_key, sourced, settings)
+                except Exception:
+                    pass
+            return sourced
     params: dict[str, Any] = {
         "q": f"{normalized}, Chennai, Tamil Nadu, India",
         "format": "jsonv2", "polygon_geojson": 1, "addressdetails": 1, "limit": 5,
@@ -104,26 +129,139 @@ def search_chennai_areas(query: str, method: str, settings: Settings | None = No
             headers={"User-Agent": "Savo-SiteScout/0.1 (hackathon demo)"}, timeout=12,
         )
         response.raise_for_status()
+        lookup_at = datetime.now(UTC)
         for item in response.json():
-            if not item.get("geojson"):
+            raw_geometry = item.get("geojson")
+            if not raw_geometry:
                 continue
+            geometry: dict[str, Any]
+            boundary_type: str
             try:
-                geometry = normalize_area_geometry(item["geojson"])
+                if raw_geometry.get("type") in {"Polygon", "MultiPolygon"}:
+                    geometry = mapping(normalize_area_geometry(raw_geometry))
+                    boundary_type = "osm-derived"
+                elif raw_geometry.get("type") == "Point":
+                    geometry = mapping(normalize_chennai_point(raw_geometry))
+                    boundary_type = "point-only"
+                else:
+                    continue
             except ValueError:
                 continue
+            osm_type = item.get("osm_type", "unknown")
+            osm_id = item.get("osm_id", "unknown")
+            category = item.get("category", item.get("class", "place"))
             results.append(AreaSearchResult(
                 display_name=item["display_name"], selection_method=method, query=normalized,
-                geometry=mapping(geometry), source="OpenStreetMap Nominatim",
-                limitations="Boundary quality follows OpenStreetMap contributor coverage.",
+                geometry=geometry, source="OpenStreetMap via Nominatim",
+                source_id=f"osm:{osm_type}:{osm_id}:{category}",
+                source_url=f"https://www.openstreetmap.org/{osm_type}/{osm_id}" if osm_type in {"node", "way", "relation"} else "https://www.openstreetmap.org",
+                source_license="Open Data Commons Open Database License (ODbL)",
+                boundary_type=boundary_type, lookup_at=lookup_at,
+                limitations=(
+                    "OSM contributor boundary; completeness and administrative meaning vary."
+                    if boundary_type == "osm-derived" else
+                    "Geocoder returned a point, not a boundary. Choose an approximate radius or select map cells before analysis."
+                ),
             ))
+        if results and redis:
+            _write_location_cache(redis, cache_key, results, settings)
     except (httpx.HTTPError, ValueError, json.JSONDecodeError):
-        pass
-    if not results and ("velachery" in normalized.lower() or normalized == "600042"):
+        if redis:
+            try:
+                stale = _read_location_cache(redis, f"{cache_key}:stale")
+                if stale:
+                    return stale
+            except Exception:
+                pass
+    return results
+
+
+def _read_location_cache(redis: Redis, key: str) -> list[AreaSearchResult]:
+    raw = redis.get(key)
+    if not raw:
+        return []
+    payload = json.loads(raw)
+    fetched_at = datetime.fromisoformat(payload[0]["lookup_at"])
+    age = max(0, int((datetime.now(UTC) - fetched_at).total_seconds()))
+    return [AreaSearchResult.model_validate({**item, "cache_age_seconds": age}) for item in payload]
+
+
+def _write_location_cache(redis: Redis, key: str, results: list[AreaSearchResult], settings: Settings) -> None:
+    payload = json.dumps([result.model_dump(mode="json") for result in results])
+    redis.setex(key, settings.location_cache_ttl_seconds, payload)
+    redis.setex(f"{key}:stale", settings.stale_cache_ttl_seconds, payload)
+
+
+def _search_ogd_pincodes(pincode: str, settings: Settings) -> list[AreaSearchResult]:
+    if not settings.ogd_pincode_boundaries_path:
+        return []
+    path = Path(settings.ogd_pincode_boundaries_path)
+    if not path.is_file():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+        document = json.loads(text)
+        features = document.get("features", []) if document.get("type") == "FeatureCollection" else [document]
+    except json.JSONDecodeError:
+        features = [json.loads(line) for line in text.splitlines() if line.strip()]
+    matches: list[AreaSearchResult] = []
+    for feature in features:
+        properties = feature.get("properties", {})
+        value = next((properties.get(key) for key in ("pincode", "pin_code", "PINCODE", "Pincode", "PIN Code") if properties.get(key) is not None), None)
+        if str(value) != pincode:
+            continue
+        try:
+            geometry = normalize_area_geometry(feature["geometry"])
+        except (KeyError, ValueError):
+            continue
+        matches.append(AreaSearchResult(
+            display_name=f"PIN {pincode}, Chennai, Tamil Nadu", selection_method="pincode", query=pincode,
+            geometry=mapping(geometry), source="OGD India / Department of Posts",
+            source_id=f"ogd-india:department-of-posts:pincode:{pincode}",
+            source_url="https://www.data.gov.in/catalog/all-india-pincode-boundary-geo-json",
+            source_license="Government Open Data License - India",
+            boundary_type="official", lookup_at=datetime.now(UTC), is_official=True,
+            limitations=(
+                "Postal delivery boundary from the configured OGD India dataset; refresh cadence follows the local "
+                f"dataset file (modified {datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat()})."
+            ),
+        ))
+    return matches
+
+
+def _search_public_pincode_layer(pincode: str, settings: Settings) -> list[AreaSearchResult]:
+    if not settings.chennai_pincode_feature_url:
+        return []
+    try:
+        response = httpx.get(
+            f"{settings.chennai_pincode_feature_url.rstrip('/')}/query",
+            params={
+                "where": f"pincode = '{pincode}'", "outFields": "OBJECTID,pincode,office_name",
+                "returnGeometry": "true", "f": "geojson", "outSR": "4326",
+            }, timeout=15,
+        )
+        response.raise_for_status()
+        features = response.json().get("features", [])
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError):
+        return []
+    results: list[AreaSearchResult] = []
+    for feature in features:
+        try:
+            geometry = normalize_area_geometry(feature["geometry"])
+        except (KeyError, ValueError):
+            continue
+        properties = feature.get("properties", {})
+        object_id = properties.get("OBJECTID", feature.get("id", "unknown"))
         results.append(AreaSearchResult(
-            display_name="Velachery, Chennai, Tamil Nadu", selection_method=method, query=normalized,
-            geometry=mapping(normalize_area_geometry(VELACHERY_GEOMETRY)),
-            source="Bundled OpenStreetMap-derived demo boundary",
-            limitations="Offline fallback boundary is simplified and must not be used as an official administrative boundary.",
+            display_name=f"PIN {pincode}, Chennai, Tamil Nadu", selection_method="pincode", query=pincode,
+            geometry=mapping(geometry), source="Public Chennai pincode feature layer",
+            source_id=f"arcgis:9f024e2233044c6d949068b3513bffa7:layer:11:object:{object_id}",
+            source_url=settings.chennai_pincode_feature_url, source_license=None,
+            boundary_type="third-party", lookup_at=datetime.now(UTC), is_official=False,
+            limitations=(
+                "Public polygon with useful Chennai coverage, but publisher metadata does not establish it as an "
+                "official Department of Posts boundary. Configure the OGD file to prefer a verified official polygon."
+            ),
         ))
     return results
 

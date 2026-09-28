@@ -40,6 +40,11 @@ def serialize_report(report: AreaReport) -> AreaReportResponse:
         cache_age_seconds=report.cache_age_seconds, created_at=report.created_at,
         selection_method=report.area.selection_method, area_sq_km=report.area.area_sq_km,
         geometry={"type": geometry.geom_type, "coordinates": json.loads(json.dumps(geometry.__geo_interface__["coordinates"]))},
+        source=report.area.source, source_id=report.area.source_id, source_url=report.area.source_url,
+        source_license=report.area.source_license, boundary_type=report.area.boundary_type,
+        boundary_lookup_at=report.area.boundary_lookup_at, is_official=report.area.is_official,
+        is_approximate=report.area.is_approximate, approximation_warning=report.area.approximation_warning,
+        resolver_cache_age_seconds=report.area.resolver_cache_age_seconds,
         metrics=[MetricEvidenceResponse.model_validate(metric) for metric in report.metrics],
         suggestions=[SuggestionResponse(
             rank=suggestion.rank, label=suggestion.label,

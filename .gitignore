@@ -1,5 +1,9 @@
 .DS_Store
 .env
+backend/data/*.geojson
+backend/data/*.geojsonl
+backend/data/*.7z
+.source-cache/
 .env.*
 !.env.example
 

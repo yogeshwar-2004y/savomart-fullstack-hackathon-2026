@@ -2,11 +2,11 @@ import { AlertCircle, BarChart3, CheckCircle2, Grid2X2, LoaderCircle, MapPin, Pl
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AreaMap } from "./AreaMap";
 import {
-  type AreaReport, type AreaSearchResult, type Comparison, type GeoJSONGeometry, type Job, type ReportSummary,
-  compareReports, getJob, getReport, listReports, retryJob, searchAreas, startAnalysis
+  type AreaReport, type AreaSearchResult, type AreaSelection, type Comparison, type GeoJSONGeometry, type Job, type ReportSummary,
+  compareReports, createApproximateRadius, getJob, getReport, listReports, retryJob, searchAreas, startAnalysis
 } from "../services/m1";
 
-type Selection = { name: string; query?: string; selection_method: "locality" | "pincode" | "cells"; geometry: GeoJSONGeometry; source: string; limitations?: string | null };
+type Selection = AreaSelection & { limitations?: string | null };
 
 const CELL_SIZE = 0.01;
 
@@ -15,6 +15,7 @@ export function M1Workspace() {
   const [method, setMethod] = useState<"locality" | "pincode">("locality");
   const [searching, setSearching] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [searchResults, setSearchResults] = useState<AreaSearchResult[]>([]);
   const [cells, setCells] = useState<number[][][][]>([]);
   const [cellMode, setCellMode] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
@@ -51,20 +52,36 @@ export function M1Workspace() {
     event.preventDefault();
     setSearching(true); setError(null); setReport(null); setComparison(null);
     try {
-      const result = (await searchAreas(query, method))[0];
-      selectResult(result);
+      const found = await searchAreas(query, method);
+      setSearchResults(found);
+      if (found.length === 1 && found[0].geometry.type !== "Point") selectResult(found[0]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Area search failed");
     } finally { setSearching(false); }
   }
 
   function selectResult(result: AreaSearchResult) {
+    if (result.geometry.type === "Point") return;
     setCells([]); setCellMode(false);
     setSelection({
       name: result.display_name.split(",")[0], query: result.query,
       selection_method: result.selection_method, geometry: result.geometry,
-      source: result.source, limitations: result.limitations
+      source: result.source, source_id: result.source_id, source_url: result.source_url,
+      source_license: result.source_license, boundary_type: result.boundary_type,
+      lookup_at: result.lookup_at, is_official: result.is_official,
+      is_approximate: false, resolver_cache_age_seconds: result.cache_age_seconds,
+      limitations: result.limitations
     });
+  }
+
+  async function selectRadius(result: AreaSearchResult, radius: number) {
+    setSearching(true); setError(null);
+    try {
+      const area = await createApproximateRadius(result, radius);
+      setSelection({ ...area, limitations: area.approximation_warning });
+      setSearchResults([]); setCells([]); setCellMode(false);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not create approximate area"); }
+    finally { setSearching(false); }
   }
 
   function addCell(lat: number, lon: number) {
@@ -75,7 +92,13 @@ export function M1Workspace() {
     const exists = cells.some((polygon) => `${polygon[0][0][0].toFixed(4)}:${polygon[0][0][1].toFixed(4)}` === key);
     const next = exists ? cells.filter((polygon) => `${polygon[0][0][0].toFixed(4)}:${polygon[0][0][1].toFixed(4)}` !== key) : [...cells, [ring]];
     setCells(next);
-    if (next.length) setSelection({ name: `Selected Chennai cells (${next.length})`, selection_method: "cells", geometry: { type: "MultiPolygon", coordinates: next }, source: "Manager-selected 0.01 degree map cells", limitations: "Cells are geographic squares and vary slightly in ground area." });
+    if (next.length) setSelection({
+      name: `Selected Chennai cells (${next.length})`, selection_method: "cells",
+      geometry: { type: "MultiPolygon", coordinates: next }, source: "User-selected map cells",
+      source_id: "user-cells:pending-server-hash", source_license: null, source_url: null,
+      boundary_type: "user-selected", lookup_at: new Date().toISOString(), is_official: false,
+      is_approximate: false, limitations: "User-defined geographic squares; not an official administrative boundary."
+    });
     else setSelection(null);
   }
 
@@ -119,8 +142,10 @@ export function M1Workspace() {
           </div>
           <div className="search-row"><input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Chennai locality or pincode" placeholder={method === "locality" ? "Velachery" : "600042"} /><button className="icon-button" title="Search" disabled={searching}><Search size={18} /></button></div>
         </form>
+        {searchResults.length ? <div className="search-results">{searchResults.map((result) => <div key={result.source_id} className="search-result"><button type="button" onClick={() => selectResult(result)} disabled={result.geometry.type === "Point"}><strong>{result.display_name.split(",")[0]}</strong><span>{result.boundary_type} · {result.source}</span></button>{result.geometry.type === "Point" ? <div className="radius-actions"><small>Point only. Use an approximate radius:</small>{[1000, 2000, 3000].map((radius) => <button type="button" key={radius} onClick={() => selectRadius(result, radius)}>{radius / 1000} km</button>)}</div> : null}</div>)}</div> : null}
         <button className={cellMode ? "cell-toggle active" : "cell-toggle"} type="button" onClick={() => { setCellMode(!cellMode); setReport(null); }}><Grid2X2 size={18} />{cellMode ? "Click cells on map" : "Select map cells"}</button>
-        {selection ? <div className="selection-summary"><strong>{selection.name}</strong><span>{selection.selection_method} · {selection.source}</span>{selection.limitations ? <small>{selection.limitations}</small> : null}</div> : <p className="muted">Search for a boundary or choose map cells.</p>}
+        {selection ? <div className="selection-summary"><strong>{selection.name}</strong><span>{selection.boundary_type} · {selection.source}</span><small>Source ID: {selection.source_id}</small>{selection.limitations ? <small>{selection.limitations}</small> : null}</div> : <p className="muted">Search for a boundary or choose map cells.</p>}
+        <EvidenceLegend />
         <button className="primary-button" type="button" disabled={!selection || (!!job && !["failed", "completed"].includes(job.status))} onClick={analyze}><Play size={18} />Start analysis</button>
         {job ? <JobProgress job={job} onRetry={retry} /> : null}
         {error ? <div className="inline-error"><AlertCircle size={18} />{error}</div> : null}
@@ -142,7 +167,11 @@ function JobProgress({ job, onRetry }: { job: Job; onRetry: () => void }) {
 }
 
 function ReportView({ report, compareOptions, compareId, setCompareId, compare, comparison }: { report: AreaReport; compareOptions: ReportSummary[]; compareId: string; setCompareId: (id: string) => void; compare: () => void; comparison: Comparison | null }) {
-  return <article className="report-view"><header className="report-header"><div><p className="eyebrow">Saved {new Date(report.created_at).toLocaleString()}</p><h2>{report.title}</h2><p>{report.summary}</p></div><div className="score-block"><strong>{report.score.toFixed(1)}</strong><span>/ 100</span><b>{report.rating}</b></div></header>{report.used_cached_evidence ? <div className="cache-note"><AlertCircle size={17} />Cached evidence used after an upstream failure. Age: {formatAge(report.cache_age_seconds)}.</div> : null}<div className="report-meta"><span>{report.area_sq_km.toFixed(2)} km²</span><span>{report.selection_method}</span><span>{report.scoring_version}</span></div><section className="why-score"><div className="section-heading"><div><p className="eyebrow">Evidence ledger</p><h3>Why this score?</h3></div><BarChart3 size={22} /></div><div className="metric-table"><div className="metric-row metric-head"><span>Signal</span><span>Raw</span><span>Weight</span><span>Points</span></div>{report.metrics.map((metric) => <details className="metric-row" key={metric.key}><summary><span><b>{metric.label}</b><em>{metric.category} · {metric.evidence_kind}</em></span><span>{metric.raw_value === null ? "Unavailable" : `${metric.raw_value.toFixed(2)} ${metric.raw_unit}`}</span><span>{Math.round(metric.weight * 100)}%</span><strong>{metric.contribution.toFixed(2)}</strong></summary><div className="metric-detail"><p><b>Source:</b> {metric.source_name} · {new Date(metric.fetched_at).toLocaleString()}</p><p><b>Normalization:</b> {metric.transformation}</p><p><b>Geography:</b> {metric.geography}</p><p><b>Limitations:</b> {metric.limitations}</p>{metric.cache_age_seconds ? <p><b>Cache age:</b> {formatAge(metric.cache_age_seconds)}</p> : null}</div></details>)}</div></section><section className="suggestions"><h3>Places to scout</h3>{report.suggestions.map((item) => <div key={item.rank}><b>{item.rank}</b><span><strong>{item.label}</strong><small>{item.rationale}</small></span></div>)}</section><section className="comparison-controls"><h3>Compare saved reports</h3><div><select value={compareId} onChange={(event) => setCompareId(event.target.value)}><option value="">Choose another report</option>{compareOptions.map((item) => <option value={item.id} key={item.id}>{item.area_name} · {item.score.toFixed(1)}</option>)}</select><button className="secondary-button" disabled={!compareId} onClick={compare}>Compare</button></div>{comparison ? <div className="comparison-result"><span>{comparison.left.area_name}<b>{comparison.left.score.toFixed(1)}</b></span><i>vs</i><span>{comparison.right.area_name}<b>{comparison.right.score.toFixed(1)}</b></span><strong>{comparison.score_delta > 0 ? "+" : ""}{comparison.score_delta.toFixed(1)} points</strong></div> : null}</section></article>;
+  return <article className="report-view"><header className="report-header"><div><p className="eyebrow">Saved {new Date(report.created_at).toLocaleString()}</p><h2>{report.title}</h2><p>{report.summary}</p></div><div className="score-block"><strong>{report.score.toFixed(1)}</strong><span>/ 100</span><b>{report.rating}</b></div></header>{report.used_cached_evidence ? <div className="cache-note"><AlertCircle size={17} />Cached evidence used after an upstream failure. Age: {formatAge(report.cache_age_seconds)}.</div> : null}<div className="boundary-evidence"><span className="legend-dot geography" /><div><strong>{report.boundary_type} boundary</strong><p>{report.source} · fetched {new Date(report.boundary_lookup_at).toLocaleString()}</p><small>{report.source_id}{report.resolver_cache_age_seconds ? ` · cache age ${formatAge(report.resolver_cache_age_seconds)}` : ""}</small>{report.approximation_warning ? <em>{report.approximation_warning}</em> : null}</div></div><EvidenceLegend /><div className="report-meta"><span>{report.area_sq_km.toFixed(2)} km²</span><span>{report.selection_method}</span><span>{report.scoring_version}</span></div><section className="why-score"><div className="section-heading"><div><p className="eyebrow">Evidence ledger</p><h3>Why this score?</h3></div><BarChart3 size={22} /></div><div className="metric-table"><div className="metric-row metric-head"><span>Signal</span><span>Raw</span><span>Weight</span><span>Points</span></div>{report.metrics.map((metric) => <details className="metric-row" key={metric.key}><summary><span><b>{metric.label}</b><em>{metric.category} · {metricLabel(metric.evidence_kind, metric.category)}</em></span><span>{metric.raw_value === null ? "Unavailable" : `${metric.raw_value.toFixed(2)} ${metric.raw_unit}`}</span><span>{Math.round(metric.weight * 100)}%</span><strong>{metric.contribution.toFixed(2)}</strong></summary><div className="metric-detail"><p><b>Source:</b> {metric.source_name} · {new Date(metric.fetched_at).toLocaleString()}</p><p><b>Normalization:</b> {metric.transformation}</p><p><b>Geography:</b> {metric.geography}</p><p><b>Limitations:</b> {metric.limitations}</p>{metric.cache_age_seconds ? <p><b>Cache age:</b> {formatAge(metric.cache_age_seconds)}</p> : null}</div></details>)}</div></section><section className="suggestions"><h3>Places to scout</h3>{report.suggestions.map((item) => <div key={item.rank}><b>{item.rank}</b><span><strong>{item.label}</strong><small>{item.rationale}</small></span></div>)}</section><section className="comparison-controls"><h3>Compare saved reports</h3><div><select value={compareId} onChange={(event) => setCompareId(event.target.value)}><option value="">Choose another report</option>{compareOptions.map((item) => <option value={item.id} key={item.id}>{item.area_name} · {item.score.toFixed(1)}</option>)}</select><button className="secondary-button" disabled={!compareId} onClick={compare}>Compare</button></div>{comparison ? <div className="comparison-result"><span>{comparison.left.area_name}<b>{comparison.left.score.toFixed(1)}</b></span><i>vs</i><span>{comparison.right.area_name}<b>{comparison.right.score.toFixed(1)}</b></span><strong>{comparison.score_delta > 0 ? "+" : ""}{comparison.score_delta.toFixed(1)} points</strong></div> : null}</section></article>;
 }
+
+function EvidenceLegend() { return <div className="evidence-legend" aria-label="Evidence legend"><span><i className="legend-dot geography" />Real geography</span><span><i className="legend-dot sourced" />Real sourced data</span><span><i className="legend-dot proxy" />Proxy data</span><span><i className="legend-dot demo" />Demo/simulated</span></div>; }
+
+function metricLabel(kind: string, category: string) { if (kind === "demo") return "demo/simulated"; if (["homes", "businesses", "amenities", "mobility", "competition"].includes(category)) return "proxy data"; return kind === "live" || kind === "cached" ? "real sourced data" : kind; }
 
 function formatAge(seconds?: number | null) { if (seconds == null) return "unknown"; if (seconds < 60) return `${seconds}s`; if (seconds < 3600) return `${Math.floor(seconds / 60)}m`; return `${Math.floor(seconds / 3600)}h`; }

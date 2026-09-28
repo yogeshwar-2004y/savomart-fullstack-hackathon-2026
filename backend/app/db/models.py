@@ -19,6 +19,16 @@ class Area(Base):
     selection_method: Mapped[str] = mapped_column(String(24))
     geometry = mapped_column(Geometry("MULTIPOLYGON", srid=4326, spatial_index=False), nullable=False)
     area_sq_km: Mapped[float] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(160), default="User-selected map area")
+    source_id: Mapped[str] = mapped_column(String(220), default="legacy:unknown")
+    source_url: Mapped[str | None] = mapped_column(Text)
+    source_license: Mapped[str | None] = mapped_column(String(120))
+    boundary_type: Mapped[str] = mapped_column(String(32), default="user-selected")
+    boundary_lookup_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    is_official: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_approximate: Mapped[bool] = mapped_column(Boolean, default=False)
+    approximation_warning: Mapped[str | None] = mapped_column(Text)
+    resolver_cache_age_seconds: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

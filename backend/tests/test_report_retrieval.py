@@ -19,6 +19,10 @@ def test_saved_report_endpoint_returns_evidence_and_geometry(monkeypatch) -> Non
         source_snapshot_at=now, used_cached_evidence=False, cache_age_seconds=None,
         selection_method="locality", area_sq_km=4.2,
         geometry={"type": "MultiPolygon", "coordinates": [[[[80.2, 12.97], [80.21, 12.97], [80.21, 12.98], [80.2, 12.97]]]]},
+        source="OpenStreetMap via Nominatim", source_id="osm:relation:123:place",
+        source_url="https://www.openstreetmap.org/relation/123", source_license="ODbL",
+        boundary_type="osm-derived", boundary_lookup_at=now, is_official=False,
+        is_approximate=False, approximation_warning=None, resolver_cache_age_seconds=None,
         metrics=[{
             "key": "amenity_density", "category": "amenities", "label": "Mapped amenities",
             "raw_value": 4, "raw_unit": "features per sq km", "normalized_value": 0.2,
@@ -42,5 +46,7 @@ def test_saved_report_endpoint_returns_evidence_and_geometry(monkeypatch) -> Non
     body = response.json()
     assert body["area_name"] == "Velachery"
     assert body["geometry"]["type"] == "MultiPolygon"
+    assert body["source_id"] == "osm:relation:123:place"
+    assert body["boundary_type"] == "osm-derived"
     assert body["metrics"][0]["limitations"] == "Not population"
     assert body["suggestions"][0]["rank"] == 1

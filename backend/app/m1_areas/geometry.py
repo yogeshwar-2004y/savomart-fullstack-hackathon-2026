@@ -1,20 +1,10 @@
 from math import cos, radians
 from typing import Any
 
-from shapely.geometry import MultiPolygon, Polygon, mapping, shape
+from shapely.geometry import MultiPolygon, Point, Polygon, mapping, shape
 from shapely.geometry.base import BaseGeometry
 
 CHENNAI_BOUNDS = (80.05, 12.75, 80.35, 13.30)
-
-VELACHERY_GEOMETRY: dict[str, Any] = {
-    "type": "Polygon",
-    "coordinates": [[
-        [80.1942, 12.9848], [80.1987, 12.9914], [80.2129, 12.9921],
-        [80.2248, 12.9841], [80.2262, 12.9720], [80.2171, 12.9602],
-        [80.2031, 12.9610], [80.1940, 12.9713], [80.1942, 12.9848],
-    ]],
-}
-
 
 class InvalidAreaGeometry(ValueError):
     pass
@@ -41,6 +31,20 @@ def normalize_area_geometry(geojson: dict[str, Any]) -> MultiPolygon:
     if area < 0.02 or area > 150:
         raise InvalidAreaGeometry("Selected area must be between 0.02 and 150 square kilometres")
     return geometry
+
+
+def normalize_chennai_point(geojson: dict[str, Any]) -> Point:
+    try:
+        point = shape(geojson)
+    except Exception as exc:
+        raise InvalidAreaGeometry("Invalid GeoJSON point") from exc
+    if not isinstance(point, Point) or point.is_empty:
+        raise InvalidAreaGeometry("Expected a Point geometry")
+    lon, lat = point.x, point.y
+    min_lon, min_lat, max_lon, max_lat = CHENNAI_BOUNDS
+    if not (min_lon <= lon <= max_lon and min_lat <= lat <= max_lat):
+        raise InvalidAreaGeometry("Selected point must stay within Greater Chennai")
+    return point
 
 
 def area_sq_km(geometry: BaseGeometry) -> float:
