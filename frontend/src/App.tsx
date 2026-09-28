@@ -1,7 +1,8 @@
-import { Activity, Database, Server, Waves } from "lucide-react";
+import { Database, Server, Waves } from "lucide-react";
 import { useEffect, useState } from "react";
 import { RoleShell, type RoleId } from "./components/RoleShell";
 import { getHealth, type HealthResponse } from "./services/health";
+import { M1Workspace } from "./components/M1Workspace";
 
 export function App() {
   const [activeRole, setActiveRole] = useState<RoleId>("bd-manager");
@@ -25,7 +26,7 @@ export function App() {
         <div className="brand-mark">S</div>
         <div>
           <p className="eyebrow">Savo SiteScout</p>
-          <h1>Chennai expansion workflow foundation</h1>
+          <h1>Area Intelligence</h1>
         </div>
       </header>
 
@@ -43,17 +44,7 @@ export function App() {
       </section>
 
       <RoleShell activeRole={activeRole} onRoleChange={setActiveRole} />
-
-      <section className="foundation-list" aria-label="Foundation scope">
-        <div>
-          <Activity size={20} />
-          <span>Background jobs and score provenance modules are scaffolded for M1.</span>
-        </div>
-        <div>
-          <Database size={20} />
-          <span>PostgreSQL/PostGIS remains the source of truth; Redis is queue and TTL cache only.</span>
-        </div>
-      </section>
+      {activeRole === "bd-manager" ? <M1Workspace /> : <section className="role-placeholder"><h2>M1 is owned by the BD Manager</h2><p>This milestone implements Area Intelligence only. M2 and M3 remain deliberately out of scope.</p></section>}
     </main>
   );
 }
