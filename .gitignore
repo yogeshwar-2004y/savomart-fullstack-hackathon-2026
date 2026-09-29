@@ -31,3 +31,4 @@ Savomart_FullStack_Hackathon_Task.pdf
 
 postgres-data/
 redis-data/
+.deploy/

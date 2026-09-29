@@ -1,0 +1,17 @@
+{$SITE_DOMAIN} {
+    encode zstd gzip
+
+    basic_auth {
+        {$DEMO_USERNAME} {$DEMO_PASSWORD_HASH}
+    }
+
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}

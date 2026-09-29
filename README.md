@@ -2,6 +2,8 @@
 
 Savo SiteScout is a Chennai expansion workspace for Savomart. This repository implements the complete **M1 Area Intelligence → M2 Property Scouting → M3 Catchment Study** loop. A BD Manager can carry a real Chennai area from virtual analysis through property scouting, field-survey operations, versioned evaluation, and an audited decision.
 
+The Azure hackathon demo is deployed at [savo-sitescout-yogesh-2026.southindia.cloudapp.azure.com](https://savo-sitescout-yogesh-2026.southindia.cloudapp.azure.com/). See the [Azure demo runbook](deploy/README.md) for access, operations, costs, and limitations. The shared demo login is an outer access gate, not production user authentication.
+
 ## Local startup
 
 Requirements: Docker Desktop with Docker Compose.
