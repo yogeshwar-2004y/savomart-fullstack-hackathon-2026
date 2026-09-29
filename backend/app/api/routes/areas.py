@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from geoalchemy2 import Geography
 from geoalchemy2.shape import from_shape
+from redis.exceptions import RedisError
 from sqlalchemy import cast, func, select
 from sqlalchemy.orm import Session
 
@@ -13,8 +14,19 @@ from app.db.dependencies import get_db
 from app.db.models import AnalysisJob, Area, AreaAnalysis
 from app.jobs.queue import enqueue_area_analysis
 from app.m1_areas.adapters import search_chennai_areas
-from app.m1_areas.geometry import InvalidAreaGeometry, area_sq_km, normalize_area_geometry, normalize_chennai_point
-from app.m1_areas.schemas import AnalysisAccepted, AnalysisCreate, AreaSearchResult, RadiusAreaRequest, RadiusAreaResponse
+from app.m1_areas.geometry import (
+    InvalidAreaGeometry,
+    area_sq_km,
+    normalize_area_geometry,
+    normalize_chennai_point,
+)
+from app.m1_areas.schemas import (
+    AnalysisAccepted,
+    AnalysisCreate,
+    AreaSearchResult,
+    RadiusAreaRequest,
+    RadiusAreaResponse,
+)
 from app.scoring.area_v1 import SCORING_VERSION
 
 router = APIRouter(prefix="/areas")
@@ -95,7 +107,7 @@ def create_analysis(
     db.commit()
     try:
         enqueue_area_analysis(str(job.id), job.attempts)
-    except Exception as exc:
+    except RedisError as exc:
         job.status = "failed"
         job.status_detail = "Redis queue unavailable. Start Redis and retry."
         job.error_code = exc.__class__.__name__

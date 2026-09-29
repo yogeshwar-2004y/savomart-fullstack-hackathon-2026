@@ -1,6 +1,11 @@
 import pytest
 
-from app.m1_areas.geometry import InvalidAreaGeometry, area_sq_km, normalize_area_geometry, normalize_chennai_point
+from app.m1_areas.geometry import (
+    InvalidAreaGeometry,
+    area_sq_km,
+    normalize_area_geometry,
+    normalize_chennai_point,
+)
 
 VELACHERY_TEST_POLYGON = {
     "type": "Polygon",

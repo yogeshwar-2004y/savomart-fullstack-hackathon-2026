@@ -7,7 +7,10 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import AreaReport
 from app.m1_areas.schemas import (
-    AreaReportResponse, MetricEvidenceResponse, ReportSummaryResponse, SuggestionResponse,
+    AreaReportResponse,
+    MetricEvidenceResponse,
+    ReportSummaryResponse,
+    SuggestionResponse,
 )
 
 

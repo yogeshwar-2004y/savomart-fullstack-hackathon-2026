@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException
 
@@ -38,19 +39,23 @@ def get_authenticated_principal(
     return principal
 
 
-def require_bd_manager(principal: Principal = Depends(get_principal)) -> str:
+def require_bd_manager(principal: Annotated[Principal, Depends(get_principal)]) -> str:
     if principal.role != "bd-manager":
         raise HTTPException(status_code=403, detail="BD Manager role required")
     return principal.role
 
 
-def require_manager_principal(principal: Principal = Depends(get_authenticated_principal)) -> Principal:
+def require_manager_principal(
+    principal: Annotated[Principal, Depends(get_authenticated_principal)],
+) -> Principal:
     if principal.role != "bd-manager":
         raise HTTPException(status_code=403, detail="BD Manager role required")
     return principal
 
 
-def require_executive_principal(principal: Principal = Depends(get_authenticated_principal)) -> Principal:
+def require_executive_principal(
+    principal: Annotated[Principal, Depends(get_authenticated_principal)],
+) -> Principal:
     if principal.role != "bd-executive":
         raise HTTPException(status_code=403, detail="BD Executive role required")
     return principal

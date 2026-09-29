@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from app.scoring.area_v1 import SCORING_VERSION, deterministic_summary, score_area
 
 
-def test_area_fitness_v1_calculation_is_deterministic() -> None:
+def test_area_fitness_v2_calculation_is_deterministic() -> None:
     provenance = {
         "geography": "selected polygon", "osm_source": "test OSM", "osm_url": None,
         "osm_kind": "live", "osm_limitations": "test limitation", "store_source": "test stores",
@@ -12,7 +12,7 @@ def test_area_fitness_v1_calculation_is_deterministic() -> None:
     score, rating, metrics = score_area(
         area_sq_km=4,
         counts={"residential": 120, "businesses": 80, "amenities": 40, "access": 50, "competition": 16},
-        nearest_store_km=2.5,
+        nearest_store_km=1.5,
         provenance=provenance,
         fetched_at=datetime(2026, 9, 28, tzinfo=UTC),
     )
@@ -41,3 +41,19 @@ def test_missing_store_signal_uses_documented_neutral_value() -> None:
     assert store_metric["raw_value"] is None
     assert store_metric["normalized_value"] == 0.5
     assert store_metric["contribution"] == 5.0
+
+
+def test_store_coverage_gap_reaches_maximum_at_three_km() -> None:
+    provenance = {
+        "geography": "selected polygon", "osm_source": "test OSM", "osm_url": None,
+        "osm_kind": "live", "osm_limitations": "test limitation", "store_source": "test stores",
+        "store_kind": "live", "store_limitations": "straight line", "cache_age_seconds": None,
+    }
+    _, _, metrics = score_area(
+        area_sq_km=2, counts={}, nearest_store_km=3.0,
+        provenance=provenance, fetched_at=datetime.now(UTC),
+    )
+
+    store_metric = next(metric for metric in metrics if metric["key"] == "savomart_coverage_gap")
+    assert store_metric["normalized_value"] == 1.0
+    assert store_metric["contribution"] == 10.0

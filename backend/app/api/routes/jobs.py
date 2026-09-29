@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_bd_manager
@@ -42,7 +43,7 @@ def retry_job(
     db.commit()
     try:
         enqueue_area_analysis(str(job.id), job.attempts)
-    except Exception as exc:
+    except RedisError as exc:
         job.status = "failed"
         job.status_detail = "Redis queue unavailable. Start Redis and retry."
         job.error_code = exc.__class__.__name__

@@ -47,11 +47,13 @@ M2 demo requests require both `X-Demo-Role` and `X-Demo-User-Id`. The bundled id
 
 - `scout_assignments` links a persisted M1 report and scouting suggestion to a named executive. The PostGIS hotspot point is copied as the assignment target so the field handoff remains stable.
 - The phone-oriented executive form captures a corrected GPS pin, address, rent, size, frontage, road width, property/floor type, visibility, condition, utilities, notes, and up to eight photos.
+- Rent must be greater than zero and no more than INR 10,000,000 per month. Property pins are validated within the configured Chennai bounds (`12.75..13.30` latitude, `80.05..80.35` longitude). Invalid form data and uploads return `422` with field-level details.
 - JPEG, PNG, and WebP uploads are limited to 5 MB by default. Pillow inspects actual image content, declared MIME must match, and only server-generated filenames are stored. `PROPERTY_PHOTO_STORAGE_PATH` controls storage; Docker uses a dedicated volume.
+- An assignment accepts one property capture. A repeat submission returns `409`; an executive accessing another executive's assignment or property receives `404` so object existence is not disclosed.
 - PostGIS checks the property against the assigned M1 area, measures straight-line distance from the hotspot, and searches for a possible duplicate within 75 m. These checks create manager-review flags rather than silently rejecting legitimate field corrections.
 - Property evaluation combines field inputs with OpenStreetMap features within 750 m and the configured Savomart store adapter. OSM or store fallback data retains the same live, cached, proxy, and demo labels used by M1.
-- Evaluation rows are append-only and versioned. M2 creates version 1; M3 can append a later version without overwriting the original decision evidence.
-- Manager stages are `scouted`, `shortlisted`, `survey_requested`, `under_review`, `approved`, and `rejected`. Only documented transitions are accepted, and each change stores actor, time, previous stage, next stage, and reason.
+- Evaluation rows are append-only and uniquely versioned per property. M2 creates version 1; the schema is ready for M3 to append version 2 without overwriting the original decision evidence, but M2 does not create later versions itself.
+- Manager stages are `scouted`, `shortlisted`, `survey_requested`, `under_review`, `approved`, and `rejected`. Only documented transitions are accepted with `409` for an illegal move, and each accepted change stores actor, time, previous stage, next stage, and reason. `survey_requested` is the persisted M2 handoff point; no M3 survey is created yet.
 
 ## Property scoring rules
 
@@ -96,7 +98,7 @@ The deterministic ruleset is versioned as `area-fitness-v1`. Each normalized val
 | Mapped daily-life amenities | `min(features_per_km2 / 20, 1)` | 20% |
 | Mapped transit access | `min(features_per_km2 / 25, 1)` | 15% |
 | Competition headroom | `1 - min(competitors_per_km2 / 8, 1)` | 10% |
-| Savomart coverage gap | `min(nearest_store_km / 5, 1)` | 10% |
+| Savomart coverage gap | `min(nearest_store_km / 3, 1)` | 10% |
 
 If store data is unavailable, coverage gap uses a documented neutral normalized value of `0.5`. Scores are labeled Strong fit (`>=70`), Promising (`>=55`), Needs validation (`>=40`), or Low evidence fit (`<40`). The explanation is generated deterministically from saved evidence; no LLM key or provider is required, and no LLM determines the score.
 
@@ -114,12 +116,17 @@ Core M1 tables are `areas`, `area_analyses`, `analysis_jobs`, `area_reports`, `a
 
 ```bash
 cd backend
+.venv/bin/python -m pip install --upgrade 'pip>=26.2'
 .venv/bin/pip install -e '.[dev]'
+.venv/bin/ruff check app tests scripts
+.venv/bin/bandit -r app scripts -q
 .venv/bin/pytest -q
+.venv/bin/pip-audit
 
 cd ../frontend
 npm install
 npm run build
+npm audit
 ```
 
 ## Current limitations

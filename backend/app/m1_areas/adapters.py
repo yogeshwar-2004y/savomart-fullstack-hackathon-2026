@@ -1,18 +1,26 @@
 import hashlib
 import json
-from pathlib import Path
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from math import asin, cos, radians, sin, sqrt
+from pathlib import Path
 from typing import Any
 
 import httpx
 from redis import Redis
-from shapely.geometry import MultiPolygon, Point, mapping, shape
+from redis.exceptions import RedisError
+from shapely.geometry import MultiPolygon, Point, mapping
 
 from app.core.config import Settings, get_settings
-from app.m1_areas.geometry import CHENNAI_BOUNDS, area_sq_km, normalize_area_geometry, normalize_chennai_point
+from app.m1_areas.geometry import (
+    area_sq_km,
+    normalize_area_geometry,
+    normalize_chennai_point,
+)
 from app.m1_areas.schemas import AreaSearchResult
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -104,7 +112,8 @@ def search_chennai_areas(query: str, method: str, settings: Settings | None = No
         cached = _read_location_cache(redis, cache_key)
         if cached:
             return cached
-    except Exception:
+    except (RedisError, ValueError, KeyError, TypeError) as exc:
+        logger.info("Location cache unavailable: %s", exc.__class__.__name__)
         redis = None
     if method == "pincode":
         sourced = _search_public_pincode_layer(normalized, settings)
@@ -112,8 +121,8 @@ def search_chennai_areas(query: str, method: str, settings: Settings | None = No
             if redis:
                 try:
                     _write_location_cache(redis, cache_key, sourced, settings)
-                except Exception:
-                    pass
+                except RedisError as exc:
+                    logger.info("Location cache write failed: %s", exc.__class__.__name__)
             return sourced
     params: dict[str, Any] = {
         "q": f"{normalized}, Chennai, Tamil Nadu, India",
@@ -171,8 +180,8 @@ def search_chennai_areas(query: str, method: str, settings: Settings | None = No
                 stale = _read_location_cache(redis, f"{cache_key}:stale")
                 if stale:
                     return stale
-            except Exception:
-                pass
+            except (RedisError, ValueError, KeyError, TypeError) as exc:
+                logger.info("Stale location cache unavailable: %s", exc.__class__.__name__)
     return results
 
 
@@ -200,10 +209,20 @@ def _search_ogd_pincodes(pincode: str, settings: Settings) -> list[AreaSearchRes
         return []
     try:
         text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return []
+    try:
         document = json.loads(text)
         features = document.get("features", []) if document.get("type") == "FeatureCollection" else [document]
     except json.JSONDecodeError:
-        features = [json.loads(line) for line in text.splitlines() if line.strip()]
+        features = []
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                features.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
     matches: list[AreaSearchResult] = []
     for feature in features:
         properties = feature.get("properties", {})
@@ -275,7 +294,8 @@ def fetch_osm_signals(geometry: MultiPolygon, area_name: str, settings: Settings
         cached = _cache_read(redis, key)
         if cached:
             return cached
-    except Exception:
+    except (RedisError, ValueError, KeyError, TypeError) as exc:
+        logger.info("Signal cache unavailable: %s", exc.__class__.__name__)
         redis = None
 
     min_lon, min_lat, max_lon, max_lat = geometry.bounds
@@ -299,8 +319,8 @@ def fetch_osm_signals(geometry: MultiPolygon, area_name: str, settings: Settings
         if redis:
             try:
                 _cache_write(redis, key, snapshot, settings)
-            except Exception:
-                pass
+            except RedisError as exc:
+                logger.info("Signal cache write failed: %s", exc.__class__.__name__)
         return snapshot
     except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
         if redis:
@@ -309,8 +329,8 @@ def fetch_osm_signals(geometry: MultiPolygon, area_name: str, settings: Settings
                 if stale:
                     stale.limitations += " Upstream failed; an eligible Redis snapshot was used."
                     return stale
-            except Exception:
-                pass
+            except (RedisError, ValueError, KeyError, TypeError) as exc:
+                logger.info("Stale signal cache unavailable: %s", exc.__class__.__name__)
         if "velachery" in area_name.lower():
             return SignalSnapshot(
                 **VELACHERY_DEMO_SIGNALS, fetched_at=datetime.now(UTC),

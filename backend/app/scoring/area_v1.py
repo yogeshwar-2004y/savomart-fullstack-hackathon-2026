@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-SCORING_VERSION = "area-fitness-v1"
+SCORING_VERSION = "area-fitness-v2"
 
 
 @dataclass(frozen=True)
@@ -45,8 +45,8 @@ def score_area(
     for rule in RULES:
         raw = values[rule.key]
         if rule.key == "savomart_coverage_gap":
-            normalized = 0.5 if raw is None else _clamp(float(raw) / 5.0)
-            transformation = "min(nearest_store_km / 5, 1); neutral 0.5 when store data is unavailable"
+            normalized = 0.5 if raw is None else _clamp(float(raw) / 3.0)
+            transformation = "min(nearest_store_km / 3, 1); neutral 0.5 when store data is unavailable"
             raw_unit = "km"
             limitation = provenance.get("store_limitations", "Straight-line distance, not travel time.")
             source_name = provenance.get("store_source", "Savomart store service")

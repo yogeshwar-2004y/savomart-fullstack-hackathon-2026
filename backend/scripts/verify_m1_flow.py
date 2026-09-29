@@ -9,6 +9,11 @@ API = "http://localhost:8000/api/v1"
 HEADERS = {"X-Demo-Role": "bd-manager"}
 
 
+def check(condition: bool, message: str) -> None:
+    if not condition:
+        raise RuntimeError(message)
+
+
 def request(method: str, path: str, **kwargs: Any) -> Any:
     response = httpx.request(method, f"{API}{path}", headers=HEADERS, timeout=30, **kwargs)
     response.raise_for_status()
@@ -35,9 +40,9 @@ def main() -> None:
     search = request("GET", "/areas/search?q=Velachery&method=locality")[0]
     anna_nagar = request("GET", "/areas/search?q=Anna%20Nagar&method=locality")[0]
     pincode = request("GET", "/areas/search?q=600042&method=pincode")[0]
-    assert search["boundary_type"] == "osm-derived"
-    assert anna_nagar["geometry"]["type"] == "MultiPolygon"
-    assert pincode["boundary_type"] in {"official", "third-party"}
+    check(search["boundary_type"] == "osm-derived", "Velachery did not resolve to an OSM boundary")
+    check(anna_nagar["geometry"]["type"] == "MultiPolygon", "Anna Nagar did not resolve to a polygon")
+    check(pincode["boundary_type"] in {"official", "third-party"}, "Pincode boundary source is unsupported")
     velachery, velachery_states = run_analysis({
         "name": "Velachery", "query": "Velachery", "selection_method": "locality",
         "geometry": search["geometry"], "source": search["source"], "source_id": search["source_id"],
@@ -64,13 +69,13 @@ def main() -> None:
         "raw_value", "normalized_value", "weight", "contribution", "source_name",
         "fetched_at", "geography", "limitations",
     }
-    assert all(required_metric_fields <= metric.keys() for metric in velachery["metrics"])
-    assert any(metric["category"] == "people" and metric["raw_value"] is None for metric in velachery["metrics"])
-    assert len(velachery["suggestions"]) > 0
-    assert velachery["geometry"] == search["geometry"]
-    assert velachery["source_id"] == search["source_id"]
-    assert cell["source_id"].startswith("user-cells:sha256:")
-    assert len(reports) >= 2
+    check(all(required_metric_fields <= metric.keys() for metric in velachery["metrics"]), "Metric provenance is incomplete")
+    check(any(metric["category"] == "people" and metric["raw_value"] is None for metric in velachery["metrics"]), "Missing people data is not labelled")
+    check(bool(velachery["suggestions"]), "Velachery has no scouting suggestions")
+    check(velachery["geometry"] == search["geometry"], "Saved geometry differs from resolved geometry")
+    check(velachery["source_id"] == search["source_id"], "Saved source ID differs from resolved source ID")
+    check(cell["source_id"].startswith("user-cells:sha256:"), "Map-cell source ID is not stable")
+    check(len(reports) >= 2, "Saved report retrieval did not return both analyses")
     print({
         "health": health["status"],
         "resolved_examples": {

@@ -3,7 +3,9 @@ from typing import Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
 from redis import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
 from app.db.session import engine
@@ -32,13 +34,13 @@ def health() -> HealthResponse:
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         database = DependencyStatus(status="error", detail=exc.__class__.__name__)
 
     try:
         client = Redis.from_url(settings.redis_url, socket_connect_timeout=1, socket_timeout=1)
         client.ping()
-    except Exception as exc:
+    except RedisError as exc:
         redis_status = DependencyStatus(status="error", detail=exc.__class__.__name__)
 
     overall: Literal["ok", "degraded"] = (

@@ -5,9 +5,13 @@ from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy import select
 
-from app.core.config import get_settings
 from app.db.models import (
-    AnalysisJob, AreaAnalysis, AreaMetricEvidence, AreaReport, ExternalDataSnapshot, ScoutingSuggestion,
+    AnalysisJob,
+    AreaAnalysis,
+    AreaMetricEvidence,
+    AreaReport,
+    ExternalDataSnapshot,
+    ScoutingSuggestion,
 )
 from app.db.session import SessionLocal
 from app.m1_areas.adapters import fetch_osm_signals, fetch_store_signals

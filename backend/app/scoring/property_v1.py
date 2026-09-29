@@ -52,10 +52,14 @@ def score_property(
     top = sorted(metrics, key=lambda item: item["contribution"], reverse=True)[:3]
     insights = [f'{item["label"]} contributes {item["contribution"]:.1f} points.' for item in top]
     risks = []
-    if rent_per_sq_ft > 120: risks.append("High asking rent per square foot.")
-    if frontage_ft is None or frontage_ft < 15: risks.append("Frontage is missing or below 15 ft.")
-    if road_width_ft is None or road_width_ft < 20: risks.append("Road access is missing or below 20 ft.")
-    if osm_kind == "demo": risks.append("Nearby public-feature evidence is simulated and must be refreshed.")
+    if rent_per_sq_ft > 120:
+        risks.append("High asking rent per square foot.")
+    if frontage_ft is None or frontage_ft < 15:
+        risks.append("Frontage is missing or below 15 ft.")
+    if road_width_ft is None or road_width_ft < 20:
+        risks.append("Road access is missing or below 20 ft.")
+    if osm_kind == "demo":
+        risks.append("Nearby public-feature evidence is simulated and must be refreshed.")
     limitations = [osm_limitations, store_limitations, "Field inputs are self-reported and require manager validation."]
     recommendation = "Shortlist for manager review." if score >= 55 else "Hold for validation before advancing."
     return {"score": score, "rating": rating, "recommendation": recommendation, "metrics": metrics, "insights": insights, "risks": risks, "limitations": limitations}

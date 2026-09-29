@@ -2,11 +2,11 @@ import json
 from datetime import UTC, datetime
 
 import httpx
+from redis.exceptions import RedisError
 
 from app.core.config import Settings
 from app.m1_areas import adapters
 from app.m1_areas.geometry import normalize_area_geometry
-
 
 POLYGON = {
     "type": "Polygon",
@@ -34,7 +34,7 @@ class StaleRedis:
 
 
 def test_locality_polygon_gets_stable_osm_provenance(monkeypatch) -> None:
-    monkeypatch.setattr(adapters, "_cache_client", lambda _settings: (_ for _ in ()).throw(ConnectionError()))
+    monkeypatch.setattr(adapters, "_cache_client", lambda _settings: (_ for _ in ()).throw(RedisError()))
     monkeypatch.setattr(adapters.httpx, "get", lambda *args, **kwargs: Response([{
         "display_name": "Velachery, Chennai", "osm_type": "relation", "osm_id": 987,
         "category": "place", "geojson": POLYGON,
@@ -48,7 +48,7 @@ def test_locality_polygon_gets_stable_osm_provenance(monkeypatch) -> None:
 
 
 def test_point_result_is_not_presented_as_boundary(monkeypatch) -> None:
-    monkeypatch.setattr(adapters, "_cache_client", lambda _settings: (_ for _ in ()).throw(ConnectionError()))
+    monkeypatch.setattr(adapters, "_cache_client", lambda _settings: (_ for _ in ()).throw(RedisError()))
     monkeypatch.setattr(adapters.httpx, "get", lambda *args, **kwargs: Response([{
         "display_name": "Other Chennai locality", "osm_type": "node", "osm_id": 12,
         "category": "place", "geojson": {"type": "Point", "coordinates": [80.21, 12.98]},
@@ -101,7 +101,7 @@ def test_grid_signal_query_uses_encoded_overpass_query(monkeypatch) -> None:
         captured.update(url=url, **kwargs)
         return Response({"elements": []})
 
-    monkeypatch.setattr(adapters, "_cache_client", lambda _settings: (_ for _ in ()).throw(ConnectionError()))
+    monkeypatch.setattr(adapters, "_cache_client", lambda _settings: (_ for _ in ()).throw(RedisError()))
     monkeypatch.setattr(adapters.httpx, "get", get)
 
     snapshot = adapters.fetch_osm_signals(normalize_area_geometry(POLYGON), "Selected Chennai cells (1)", Settings())
@@ -112,7 +112,7 @@ def test_grid_signal_query_uses_encoded_overpass_query(monkeypatch) -> None:
 
 
 def test_grid_signal_query_uses_labelled_demo_fallback_after_upstream_failure(monkeypatch) -> None:
-    monkeypatch.setattr(adapters, "_cache_client", lambda _settings: (_ for _ in ()).throw(ConnectionError()))
+    monkeypatch.setattr(adapters, "_cache_client", lambda _settings: (_ for _ in ()).throw(RedisError()))
     monkeypatch.setattr(
         adapters.httpx, "get", lambda *args, **kwargs: (_ for _ in ()).throw(httpx.ConnectError("down")),
     )

@@ -5,8 +5,8 @@ from fastapi.testclient import TestClient
 
 from app.api.routes import reports as reports_route
 from app.db.dependencies import get_db
-from app.main import app
 from app.m1_areas.schemas import AreaReportResponse
+from app.main import app
 
 
 def test_saved_report_endpoint_returns_evidence_and_geometry(monkeypatch) -> None:

@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_db
 from app.m1_areas.repository import get_report, list_reports
-from app.m1_areas.schemas import AreaReportResponse, ReportComparisonResponse, ReportSummaryResponse
+from app.m1_areas.schemas import (
+    AreaReportResponse,
+    ReportComparisonResponse,
+    ReportSummaryResponse,
+)
 
 router = APIRouter(prefix="/area-reports")
 

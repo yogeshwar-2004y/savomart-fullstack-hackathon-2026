@@ -9,17 +9,35 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import DEMO_USERS, Principal, get_authenticated_principal, require_executive_principal, require_manager_principal
+from app.api.dependencies import (
+    DEMO_USERS,
+    Principal,
+    get_authenticated_principal,
+    require_executive_principal,
+    require_manager_principal,
+)
 from app.core.config import get_settings
 from app.db.dependencies import get_db
 from app.db.models import PropertyPhoto
 from app.m2_properties.photos import InvalidPhoto, store_upload
 from app.m2_properties.schemas import (
-    AssigneeResponse, AssignmentCreate, AssignmentResponse, PropertyCapture, PropertyResponse, StageChange,
+    AssigneeResponse,
+    AssignmentCreate,
+    AssignmentResponse,
+    PropertyCapture,
+    PropertyResponse,
+    StageChange,
 )
 from app.m2_properties.service import (
-    capture_property, create_assignment, get_assignment, get_property_record, list_assignments,
-    list_properties, move_stage, photo_path, serialize_property,
+    capture_property,
+    create_assignment,
+    get_assignment,
+    get_property_record,
+    list_assignments,
+    list_properties,
+    move_stage,
+    photo_path,
+    serialize_property,
 )
 
 router = APIRouter()
@@ -59,8 +77,9 @@ def property_capture(
     payload: Annotated[str, Form()],
     db: Annotated[Session, Depends(get_db)],
     principal: Annotated[Principal, Depends(require_executive_principal)],
-    photos: Annotated[list[UploadFile], File()] = [],
+    photos: Annotated[list[UploadFile] | None, File()] = None,
 ) -> PropertyResponse:
+    photos = photos or []
     assignment = get_assignment(db, assignment_id, principal)
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
@@ -75,17 +94,24 @@ def property_capture(
         raise HTTPException(status_code=422, detail="Upload at most 8 property photos")
     settings = get_settings()
     stored = []
+    completed = False
     try:
-        stored = [store_upload(item, settings.property_photo_storage_path, settings.property_photo_max_bytes) for item in photos]
+        for item in photos:
+            stored.append(
+                store_upload(
+                    item,
+                    settings.property_photo_storage_path,
+                    settings.property_photo_max_bytes,
+                )
+            )
         prop = capture_property(db, assignment, capture, principal, stored, settings)
+        completed = True
     except InvalidPhoto as exc:
-        for item in stored:
-            (Path(settings.property_photo_storage_path) / item.storage_key).unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception:
-        for item in stored:
-            (Path(settings.property_photo_storage_path) / item.storage_key).unlink(missing_ok=True)
-        raise
+    finally:
+        if not completed:
+            for item in stored:
+                (Path(settings.property_photo_storage_path) / item.storage_key).unlink(missing_ok=True)
     return serialize_property(prop)
 
 

@@ -11,12 +11,23 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.dependencies import DEMO_USERS, Principal
 from app.core.config import Settings, get_settings
 from app.db.models import (
-    Area, AreaReport, Property, PropertyEvaluation, PropertyPhoto, PropertyStageTransition,
-    ScoutAssignment, ScoutingSuggestion,
+    Area,
+    AreaReport,
+    Property,
+    PropertyEvaluation,
+    PropertyPhoto,
+    PropertyStageTransition,
+    ScoutAssignment,
+    ScoutingSuggestion,
 )
 from app.m1_areas.adapters import fetch_osm_signals, fetch_store_signals
 from app.m2_properties.photos import StoredPhoto
-from app.m2_properties.schemas import AssignmentCreate, AssignmentResponse, PropertyCapture, PropertyResponse
+from app.m2_properties.schemas import (
+    AssignmentCreate,
+    AssignmentResponse,
+    PropertyCapture,
+    PropertyResponse,
+)
 from app.scoring.property_v1 import SCORING_VERSION, score_property, validate_transition
 
 
@@ -93,8 +104,10 @@ def capture_property(
         AreaReport, AreaReport.area_id == Area.id
     ).where(AreaReport.id == assignment.area_report_id))
     flags: list[str] = []
-    if existing: flags.append("Possible duplicate within 75 m; manager review required.")
-    if not inside_area: flags.append("GPS pin is outside the assigned M1 area.")
+    if existing:
+        flags.append("Possible duplicate within 75 m; manager review required.")
+    if not inside_area:
+        flags.append("GPS pin is outside the assigned M1 area.")
     if distance is not None and distance > settings.property_assignment_distance_m:
         flags.append(f"GPS pin is {distance / 1000:.1f} km from the assigned hotspot.")
     prop = Property(
