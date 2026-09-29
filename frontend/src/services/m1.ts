@@ -67,6 +67,7 @@ export type Metric = {
 };
 
 export type Suggestion = {
+  id: string;
   rank: number;
   label: string;
   latitude: number;
@@ -107,19 +108,7 @@ export type Comparison = {
   metric_deltas: Record<string, number>;
 };
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}/api/v1${path}`, {
-    ...options,
-    headers: { "Content-Type": "application/json", "X-Demo-Role": "bd-manager", ...options?.headers }
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail ?? `Request failed with ${response.status}`);
-  }
-  return response.json();
-}
+import { apiRequest as request } from "./api";
 
 export const searchAreas = (query: string, method: "locality" | "pincode") =>
   request<AreaSearchResult[]>(`/areas/search?q=${encodeURIComponent(query)}&method=${method}`);

@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     allow_simulated_signal_fallback: bool = True
     store_service_url: str | None = None
     store_service_token: str | None = None
+    property_photo_storage_path: str = "storage/property-photos"
+    property_photo_max_bytes: int = 5_242_880
+    property_nearby_radius_m: int = 750
+    property_duplicate_radius_m: int = 75
+    property_assignment_distance_m: int = 3000
     rq_sync: bool = False
     cors_origins_raw: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",

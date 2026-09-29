@@ -3,9 +3,15 @@ import { useEffect, useState } from "react";
 import { RoleShell, type RoleId } from "./components/RoleShell";
 import { getHealth, type HealthResponse } from "./services/health";
 import { M1Workspace } from "./components/M1Workspace";
+import { ExecutiveWorkspace } from "./components/ExecutiveWorkspace";
+import { ManagerPipeline } from "./components/ManagerPipeline";
+import { setDemoIdentity } from "./services/api";
 
 export function App() {
-  const [activeRole, setActiveRole] = useState<RoleId>("bd-manager");
+  const [activeRole, setActiveRole] = useState<RoleId>(() => {
+    setDemoIdentity({ role: "bd-manager", userId: "bd-manager-1" });
+    return "bd-manager";
+  });
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,6 +25,14 @@ export function App() {
         setError(err instanceof Error ? err.message : "Unable to reach API");
       });
   }, []);
+
+  function changeRole(role: RoleId) {
+    setDemoIdentity({
+      role,
+      userId: role === "bd-manager" ? "bd-manager-1" : role === "bd-executive" ? "bd-executive-1" : role
+    });
+    setActiveRole(role);
+  }
 
   return (
     <main>
@@ -43,8 +57,10 @@ export function App() {
         {error ? <p className="error-text">{error}</p> : null}
       </section>
 
-      <RoleShell activeRole={activeRole} onRoleChange={setActiveRole} />
-      {activeRole === "bd-manager" ? <M1Workspace /> : <section className="role-placeholder"><h2>M1 is owned by the BD Manager</h2><p>This milestone implements Area Intelligence only. M2 and M3 remain deliberately out of scope.</p></section>}
+      <RoleShell activeRole={activeRole} onRoleChange={changeRole} />
+      {activeRole === "bd-manager" ? <><M1Workspace /><ManagerPipeline /></> : null}
+      {activeRole === "bd-executive" ? <ExecutiveWorkspace /> : null}
+      {activeRole === "survey-manager" || activeRole === "survey-executive" ? <section className="role-placeholder"><h2>M3 is not active yet</h2><p>Catchment survey operations remain the next milestone.</p></section> : null}
     </main>
   );
 }

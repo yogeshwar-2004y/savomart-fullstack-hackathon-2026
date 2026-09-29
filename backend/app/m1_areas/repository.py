@@ -47,7 +47,7 @@ def serialize_report(report: AreaReport) -> AreaReportResponse:
         resolver_cache_age_seconds=report.area.resolver_cache_age_seconds,
         metrics=[MetricEvidenceResponse.model_validate(metric) for metric in report.metrics],
         suggestions=[SuggestionResponse(
-            rank=suggestion.rank, label=suggestion.label,
+            id=suggestion.id, rank=suggestion.rank, label=suggestion.label,
             latitude=to_shape(suggestion.point).y, longitude=to_shape(suggestion.point).x,
             rationale=suggestion.rationale, evidence=suggestion.evidence,
         ) for suggestion in report.suggestions],

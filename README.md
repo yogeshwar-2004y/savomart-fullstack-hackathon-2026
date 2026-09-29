@@ -1,8 +1,8 @@
 # Savo SiteScout
 
-Savo SiteScout is a Chennai expansion workspace for Savomart. This repository currently implements **M1: Area Intelligence**: a BD Manager selects a locality, pincode, or map cells; starts a background analysis; follows durable progress; and revisits or compares saved Area Fitness Reports.
+Savo SiteScout is a Chennai expansion workspace for Savomart. This repository implements **M1: Area Intelligence** and **M2: Property Scouting and Evaluation**. A BD Manager can turn an M1 scouting hotspot into an executive assignment, receive a field-captured property and deterministic evaluation, then move it through an audited review pipeline.
 
-M2 property scouting and M3 catchment operations are intentionally not implemented yet.
+M3 catchment operations are intentionally not implemented yet.
 
 ## Local startup
 
@@ -16,6 +16,8 @@ docker compose exec api alembic upgrade head
 
 Open `http://localhost:5173`, keep the demo role set to **BD Manager**, submit a search for `Velachery`, choose an OSM boundary (or an explicitly approximate radius when only a point is returned), and click **Start analysis**. The API is at `http://localhost:8000`; interactive API docs are at `http://localhost:8000/docs`.
 
+For M2, open a saved report and use **Assign** beside a suggested scouting location. Switch to **BD Executive**, open the assignment, correct the map pin, fill the property form, and select **Save and evaluate**. Switch back to **BD Manager** to inspect the property in the pipeline and record a stage decision.
+
 Useful checks:
 
 ```bash
@@ -23,6 +25,7 @@ curl http://localhost:8000/api/v1/health
 curl "http://localhost:8000/api/v1/areas/search?q=Velachery&method=locality"
 docker compose logs -f worker
 backend/.venv/bin/python backend/scripts/verify_m1_flow.py
+backend/.venv/bin/python backend/scripts/verify_m2_flow.py
 ```
 
 Stop with `docker compose down`. Data volumes are retained. Use `docker compose down -v` only when you deliberately want to erase the local database and Redis data.
@@ -38,7 +41,36 @@ Stop with `docker compose down`. Data volumes are retained. Use `docker compose 
 - Reports, metric provenance, suggestions, source snapshots, and geometry are saved in PostgreSQL/PostGIS. Redis is only the queue and short-lived external-response cache.
 - Saved reports can be reopened and compared. “Why this score?” exposes raw values, normalization, weight, contribution, source, fetch time, geography, evidence kind, cache age, and limitations.
 
-The demo role header is `X-Demo-Role: bd-manager`. This is intentionally lightweight hackathon access control, not production authentication.
+M2 demo requests require both `X-Demo-Role` and `X-Demo-User-Id`. The bundled identities are manager `bd-manager-1` and executives `bd-executive-1` / `bd-executive-2`. The backend enforces manager-only actions and executive assignment ownership; this remains lightweight hackathon identity, not production authentication.
+
+## M2 flow
+
+- `scout_assignments` links a persisted M1 report and scouting suggestion to a named executive. The PostGIS hotspot point is copied as the assignment target so the field handoff remains stable.
+- The phone-oriented executive form captures a corrected GPS pin, address, rent, size, frontage, road width, property/floor type, visibility, condition, utilities, notes, and up to eight photos.
+- JPEG, PNG, and WebP uploads are limited to 5 MB by default. Pillow inspects actual image content, declared MIME must match, and only server-generated filenames are stored. `PROPERTY_PHOTO_STORAGE_PATH` controls storage; Docker uses a dedicated volume.
+- PostGIS checks the property against the assigned M1 area, measures straight-line distance from the hotspot, and searches for a possible duplicate within 75 m. These checks create manager-review flags rather than silently rejecting legitimate field corrections.
+- Property evaluation combines field inputs with OpenStreetMap features within 750 m and the configured Savomart store adapter. OSM or store fallback data retains the same live, cached, proxy, and demo labels used by M1.
+- Evaluation rows are append-only and versioned. M2 creates version 1; M3 can append a later version without overwriting the original decision evidence.
+- Manager stages are `scouted`, `shortlisted`, `survey_requested`, `under_review`, `approved`, and `rejected`. Only documented transitions are accepted, and each change stores actor, time, previous stage, next stage, and reason.
+
+## Property scoring rules
+
+The deterministic ruleset is `property-fitness-v1`. Every normalized value is clamped to `0..1`; contribution is `normalized * weight * 100`. No LLM calculates or invents property figures.
+
+| Signal | Normalization | Weight |
+|---|---|---:|
+| Rent efficiency | `1 - min(rent per sq ft / 150, 1)` | 20% |
+| Store size fit | `1.0` for 1,200-3,000 sq ft; `0.6` for 800-4,000; otherwise `0.2` | 15% |
+| Frontage | `min(frontage ft / 30, 1)`; missing is `0` | 10% |
+| Road access | `min(road width ft / 40, 1)`; missing is `0` | 10% |
+| Street visibility | field rating divided by `5` | 10% |
+| Property condition | field rating divided by `5` | 7% |
+| Access and utilities | parking, backup power, and water available divided by `3` | 8% |
+| Nearby mapped activity | `min((shops + amenities + access within 750 m) / 60, 1)` | 10% |
+| Competition headroom | `1 - min(mapped competitors within 750 m / 10, 1)` | 5% |
+| Savomart coverage gap | `min(nearest store km / 5, 1)`; unavailable uses neutral `0.5` | 5% |
+
+Scores are labeled Strong candidate (`>=70`), Promising (`>=55`), Needs review (`>=40`), or Weak candidate (`<40`). Public mapped features are context signals, not population, footfall, or complete business counts. Field values are self-reported until manager validation. Bundled simulated evidence is visibly labeled and does not become real because it is combined with a real GPS point.
 
 ## Data sources and evidence labels
 
@@ -71,12 +103,12 @@ If store data is unavailable, coverage gap uses a documented neutral normalized 
 ## Architecture and schema
 
 - `frontend`: React, TypeScript, Vite, React Leaflet, and OpenStreetMap tiles.
-- `api`: FastAPI validation, role guard, search, jobs, reports, comparison, and health endpoints.
+- `api`: FastAPI validation, role and ownership guards, area search/jobs/reports, assignments, property capture, image delivery, evaluation, pipeline, and health endpoints.
 - `worker`: separate Python RQ process for enrichment and scoring.
 - `postgres`: PostgreSQL 16/PostGIS is authoritative for area geometry, job progress, reports, evidence, and source snapshots.
 - `redis`: RQ queue plus bounded external-data cache.
 
-Core M1 tables are `areas`, `area_analyses`, `analysis_jobs`, `area_reports`, `area_metric_evidence`, `scouting_suggestions`, and `external_data_snapshots`. Area polygons and suggestion points use SRID 4326 with GiST spatial indexes. See [ARCHITECTURE.md](ARCHITECTURE.md) and [Decisions.md](Decisions.md) for the agreed M1-M3 direction.
+Core M1 tables are `areas`, `area_analyses`, `analysis_jobs`, `area_reports`, `area_metric_evidence`, `scouting_suggestions`, and `external_data_snapshots`. M2 adds `scout_assignments`, `properties`, `property_photos`, `property_evaluations`, and `property_stage_transitions`. Area polygons, assignment targets, suggestions, and property locations use SRID 4326 with GiST spatial indexes. See [ARCHITECTURE.md](ARCHITECTURE.md) and [Decisions.md](Decisions.md) for the agreed M1-M3 direction.
 
 ## Development checks
 
@@ -98,7 +130,9 @@ npm run build
 - Map cells are geographic squares rather than a city-wide precomputed grid. This is deliberate: there is no mandatory H3 heatmap.
 - Straight-line store distance is used instead of routing time. Scouting suggestions are mapped activity clusters that require field validation.
 - No approved Census/OGD demographic dataset has been normalized to the selected boundary yet, so people metrics are unavailable and excluded from scoring.
-- Demo role switching is not production authentication. M2, M3, advanced cannibalisation, PDF export, full offline sync, and a conversational analyst remain out of scope.
+- Demo role switching is not production authentication. Property photos use local/Docker-volume storage rather than production object storage, distances are straight-line rather than routed, and field details are not independently verified.
+- M2 performs evaluation during property submission, so a slow public Overpass request can delay the save; the configured cache and labeled demo fallback keep the hackathon walkthrough available. A production deployment should move enrichment to a durable job.
+- M3, advanced cannibalisation, PDF export, full offline sync, and a conversational analyst remain out of scope.
 
 ## AI usage
 

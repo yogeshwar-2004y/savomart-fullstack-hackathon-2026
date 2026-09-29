@@ -106,6 +106,7 @@ class MetricEvidenceResponse(BaseModel):
 
 
 class SuggestionResponse(BaseModel):
+    id: UUID
     rank: int
     label: str
     latitude: float

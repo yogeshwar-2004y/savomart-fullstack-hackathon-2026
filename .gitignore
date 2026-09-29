@@ -24,6 +24,7 @@ build/
 
 *.log
 coverage/
+backend/storage/
 
 Savomart_FullStack_Hackathon_Task.pdf
 

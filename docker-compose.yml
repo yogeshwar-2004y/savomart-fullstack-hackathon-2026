@@ -39,6 +39,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - property-photos:/app/storage/property-photos
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,3 +82,4 @@ volumes:
   postgres-data:
   redis-data:
   frontend-node-modules:
+  property-photos:

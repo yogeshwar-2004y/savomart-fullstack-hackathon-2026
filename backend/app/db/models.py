@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, Uuid, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -118,6 +118,102 @@ class ScoutingSuggestion(Base):
     point = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
     rationale: Mapped[str] = mapped_column(Text)
     evidence: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class ScoutAssignment(Base):
+    __tablename__ = "scout_assignments"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    area_report_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("area_reports.id"), index=True)
+    suggestion_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scouting_suggestions.id"), index=True)
+    target_label: Mapped[str] = mapped_column(String(160))
+    target_geometry = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
+    assignee_id: Mapped[str] = mapped_column(String(64), index=True)
+    assignee_name: Mapped[str] = mapped_column(String(120))
+    created_by_id: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(24), default="assigned")
+    instructions: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    report: Mapped[AreaReport] = relationship()
+    suggestion: Mapped[ScoutingSuggestion | None] = relationship()
+
+
+class Property(Base):
+    __tablename__ = "properties"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    assignment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scout_assignments.id"), index=True)
+    captured_by_id: Mapped[str] = mapped_column(String(64), index=True)
+    location = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
+    address: Mapped[str] = mapped_column(String(240))
+    rent_monthly: Mapped[float] = mapped_column(Float)
+    size_sq_ft: Mapped[float] = mapped_column(Float)
+    frontage_ft: Mapped[float | None] = mapped_column(Float)
+    road_width_ft: Mapped[float | None] = mapped_column(Float)
+    property_type: Mapped[str] = mapped_column(String(40))
+    floor_level: Mapped[str] = mapped_column(String(40))
+    visibility_rating: Mapped[int] = mapped_column(Integer)
+    condition_rating: Mapped[int] = mapped_column(Integer)
+    parking_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    power_backup: Mapped[bool] = mapped_column(Boolean, default=False)
+    water_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+    stage: Mapped[str] = mapped_column(String(32), default="scouted", index=True)
+    duplicate_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    suspicious_gps: Mapped[bool] = mapped_column(Boolean, default=False)
+    review_flags: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    assignment: Mapped[ScoutAssignment] = relationship()
+    photos: Mapped[list["PropertyPhoto"]] = relationship(cascade="all, delete-orphan", order_by="PropertyPhoto.created_at")
+    evaluations: Mapped[list["PropertyEvaluation"]] = relationship(cascade="all, delete-orphan", order_by="PropertyEvaluation.version")
+    transitions: Mapped[list["PropertyStageTransition"]] = relationship(cascade="all, delete-orphan", order_by="PropertyStageTransition.created_at")
+
+
+class PropertyPhoto(Base):
+    __tablename__ = "property_photos"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    storage_key: Mapped[str] = mapped_column(String(240), unique=True)
+    original_filename: Mapped[str] = mapped_column(String(240))
+    content_type: Mapped[str] = mapped_column(String(40))
+    byte_size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PropertyEvaluation(Base):
+    __tablename__ = "property_evaluations"
+    __table_args__ = (UniqueConstraint("property_id", "version", name="uq_property_evaluation_version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    scoring_version: Mapped[str] = mapped_column(String(48))
+    score: Mapped[float] = mapped_column(Float)
+    rating: Mapped[str] = mapped_column(String(40))
+    recommendation: Mapped[str] = mapped_column(Text)
+    metrics: Mapped[list[Any]] = mapped_column(JSONB)
+    insights: Mapped[list[Any]] = mapped_column(JSONB)
+    risks: Mapped[list[Any]] = mapped_column(JSONB)
+    limitations: Mapped[list[Any]] = mapped_column(JSONB)
+    source_snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PropertyStageTransition(Base):
+    __tablename__ = "property_stage_transitions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    from_stage: Mapped[str | None] = mapped_column(String(32))
+    to_stage: Mapped[str] = mapped_column(String(32))
+    actor_id: Mapped[str] = mapped_column(String(64))
+    actor_name: Mapped[str] = mapped_column(String(120))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ExternalDataSnapshot(Base):

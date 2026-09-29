@@ -31,7 +31,7 @@ def test_saved_report_endpoint_returns_evidence_and_geometry(monkeypatch) -> Non
             "limitations": "Not population", "evidence_kind": "live", "cache_age_seconds": None,
         }],
         suggestions=[{
-            "rank": 1, "label": "Main road cluster", "latitude": 12.98, "longitude": 80.21,
+            "id": uuid4(), "rank": 1, "label": "Main road cluster", "latitude": 12.98, "longitude": 80.21,
             "rationale": "Validate on site", "evidence": {"source": "OpenStreetMap"},
         }],
     )
