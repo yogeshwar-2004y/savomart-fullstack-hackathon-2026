@@ -259,4 +259,4 @@ The complete persona workflow has been verified locally through Docker Compose a
 
 ## AI usage
 
-The repository was built with Codex in the Codex desktop app for architecture interpretation, implementation, tests, and documentation. The runtime product does not require or call an LLM. The final submission should add a shared/exported AI session link and demo-video link here when available.
+The repository was built with Claude for problem understanding, architecture interpretation and Codex for implementation, tests, and documentation. The runtime product does not require or call an LLM. The final submission should add a shared/exported AI session link and demo-video link here when available.
