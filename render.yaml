@@ -79,6 +79,15 @@ services:
         source: /*
         destination: /index.html
 
+  # ==========================================================
+  # 4. Redis Instance for Job Queue & Caching
+  # ==========================================================
+  - type: redis
+    name: sitescout-redis
+    plan: starter
+    region: oregon
+    ipAllowList: []
+
 # ============================================================
 # Databases & Infrastructure Add-ons
 # ============================================================
@@ -89,9 +98,3 @@ databases:
     plan: starter
     region: oregon
     postgresMajorVersion: 16
-
-  - type: redis
-    name: sitescout-redis
-    plan: starter
-    region: oregon
-    ipAllowList: []
