@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-SelectionMethod = Literal["locality", "pincode", "cells", "radius"]
+SelectionMethod = Literal["locality", "pincode", "cells", "radius", "ward"]
 JobStatus = Literal["queued", "fetching", "scoring", "completed", "failed"]
 
 

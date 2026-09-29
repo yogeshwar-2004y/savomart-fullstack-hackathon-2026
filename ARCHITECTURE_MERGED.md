@@ -76,13 +76,13 @@ Records use foreign keys and UUID identifiers. Geometry is stored in SRID 4326. 
 
 ## 6. Spatial strategy
 
-M1 accepts OSM locality/pincode polygons, explicit approximate radii for point-only geocoder results, or user-selected 0.01-degree map cells. Selected geometry is validated against Chennai bounds. A precomputed city-wide grid or H3 heatmap is not required for the current workflow.
+M1 accepts OSM locality/pincode polygons, verified polygons from the seeded GCC public ward layer by ward ID, explicit approximate radii for point-only geocoder results, or user-selected 0.01-degree map cells. Ward requests must match the seeded source ID and PostGIS polygon; no official boundary is inferred from a point. The degree-based cells are not equal-area. Selected geometry is validated against Chennai bounds and saved unchanged with provenance. A precomputed city-wide grid or H3 heatmap is not required for the current workflow.
 
 M2 uses PostGIS for area containment and point-distance checks; proximity checks are expressed in metres using geography operations. The 750 m OSM evidence region is buffered in PostGIS geography. M3 calculates overlap in EPSG:32644, unions all eligible recent source-study coverage, subtracts that union from the target, partitions remaining metric geometry into clipped longitudinal zones, and rejects zones with area overlap. Lane observations outside a zone beyond GPS tolerance are retained and flagged for review.
 
 **Spatial enhancement:** the proposed 500 m shared cell grid could later support comparable workload sizing and batch scoring, but it adds ingestion and boundary-maintenance cost. Do not introduce it until measured needs justify it. Preserve source geometries in SRID 4326 for interchange while continuing to use projected/geography-aware calculations for metric operations.
 
-Current M3 zone generation is geometric rather than road-network-aware. It does not promise equal lane counts or walking effort. Routing and advanced workload balancing remain future work.
+Current M3 zone generation is geometric rather than road-network-aware. It does not promise equal lane counts or walking effort. For each opened requested catchment, a targeted OSM Overpass road lookup can suggest mapped ways clipped to the uncovered survey geometry. It groups fragments by name/highway, caches a successful extract in Redis for 24 hours, and persists the reviewed snapshot with the study. A manager must opt lanes into the plan; a crossing lane is linked to one zone by greatest clipped length. On a road-source failure, the manual zone and unmapped-lane path remains usable. Routing and advanced workload balancing remain future work.
 
 ## 7. Workflow contracts
 

@@ -4,14 +4,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from geoalchemy2 import Geography
-from geoalchemy2.shape import from_shape
+from geoalchemy2.shape import from_shape, to_shape
 from redis.exceptions import RedisError
 from sqlalchemy import cast, func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_bd_manager
 from app.db.dependencies import get_db
-from app.db.models import AnalysisJob, Area, AreaAnalysis
+from app.db.models import AnalysisJob, Area, AreaAnalysis, WardCensus
 from app.jobs.queue import enqueue_area_analysis
 from app.m1_areas.adapters import search_chennai_areas
 from app.m1_areas.data_sources import list_chennai_stores
@@ -25,6 +25,7 @@ from app.m1_areas.schemas import (
     AnalysisAccepted,
     AnalysisCreate,
     AreaSearchResult,
+    AreaSelection,
     RadiusAreaRequest,
     RadiusAreaResponse,
     StoreLocationResponse,
@@ -32,6 +33,26 @@ from app.m1_areas.schemas import (
 from app.scoring.area_v1 import SCORING_VERSION
 
 router = APIRouter(prefix="/areas")
+
+
+@router.get("/wards/{ward_id}", response_model=AreaSelection)
+def gcc_ward(
+    ward_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    _role: Annotated[str, Depends(require_bd_manager)],
+) -> AreaSelection:
+    if not 1 <= ward_id <= 200:
+        raise HTTPException(status_code=422, detail="GCC ward ID must be between 1 and 200")
+    ward = db.get(WardCensus, f"{ward_id:03d}")
+    if not ward:
+        raise HTTPException(status_code=404, detail="Verified GCC ward boundary unavailable; select another area mode")
+    return AreaSelection(
+        name=f"GCC Ward {ward.ward_id}", query=ward.ward_id, selection_method="ward",
+        geometry=to_shape(ward.geometry).__geo_interface__, source="Greater Chennai Corporation ward boundary layer",
+        source_id=f"gcc:ward:{ward.ward_id}", source_url=ward.boundary_source_url,
+        source_license=None, boundary_type="official", lookup_at=ward.retrieved_at,
+        is_official=True, is_approximate=False,
+    )
 
 
 @router.get("/stores", response_model=list[StoreLocationResponse])
@@ -84,6 +105,19 @@ def create_analysis(
         geometry = normalize_area_geometry(payload.area.geometry)
     except InvalidAreaGeometry as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if payload.area.selection_method == "ward":
+        ward_id = payload.area.query or ""
+        ward = db.get(WardCensus, ward_id)
+        if not ward or payload.area.source_id != f"gcc:ward:{ward_id}" or not geometry.equals(to_shape(ward.geometry)):
+            raise HTTPException(status_code=422, detail="Ward selection must match a verified GCC polygon")
+        payload.area.name = f"GCC Ward {ward_id}"
+        payload.area.source = "Greater Chennai Corporation ward boundary layer"
+        payload.area.source_url = ward.boundary_source_url
+        payload.area.source_license = None
+        payload.area.boundary_type = "official"
+        payload.area.lookup_at = ward.retrieved_at
+        payload.area.is_official = True
+        payload.area.is_approximate = False
     source_id = payload.area.source_id
     if payload.area.selection_method == "cells":
         source_id = f"user-cells:sha256:{hashlib.sha256(geometry.wkb).hexdigest()}"

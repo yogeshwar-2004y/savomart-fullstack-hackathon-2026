@@ -2,10 +2,12 @@ import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+import httpx
 from geoalchemy2 import Geography
 from geoalchemy2.shape import from_shape, to_shape
 from pyproj import Transformer
-from shapely.geometry import MultiPolygon, Point, Polygon, box, mapping
+from shapely.errors import GEOSException
+from shapely.geometry import MultiPolygon, Point, Polygon, box, mapping, shape
 from shapely.ops import transform, unary_union
 from sqlalchemy import cast, func, select
 from sqlalchemy.orm import Session, selectinload
@@ -22,6 +24,7 @@ from app.db.models import (
     SurveyZone,
 )
 from app.m2_properties.service import get_property_record
+from app.m3_surveys.roads import fetch_road_suggestions
 from app.m3_surveys.schemas import (
     CatchmentStudyResponse,
     LaneSubmissionCreate,
@@ -213,11 +216,33 @@ def list_studies(db: Session, principal: Principal) -> list[CatchmentStudy]:
     return list(db.scalars(query).unique().all())
 
 
+def refresh_lane_suggestions(db: Session, study: CatchmentStudy, settings: Settings | None = None, *, force: bool = False) -> CatchmentStudy:
+    if study.status != "requested" or study.zones:
+        raise ValueError("Mapped lane suggestions are available before zone assignment only")
+    if study.lane_suggestions is not None and not (force and study.lane_suggestions_error):
+        return study
+    settings = settings or get_settings()
+    try:
+        suggestions, fetched_at = fetch_road_suggestions(_multi(to_shape(study.survey_geometry)), settings)
+        study.lane_suggestions = suggestions
+        study.lane_suggestions_fetched_at = fetched_at
+        study.lane_suggestions_error = None if suggestions else "No surveyable mapped roads were found in the remaining catchment. Plan zones manually."
+    except (httpx.HTTPError, GEOSException, ValueError, TypeError, KeyError):
+        study.lane_suggestions = []
+        study.lane_suggestions_fetched_at = None
+        study.lane_suggestions_error = "OpenStreetMap road lookup is unavailable. Plan zones manually; field executives can record unmapped lanes."
+    db.commit()
+    return get_study(db, study.id)  # type: ignore[return-value]
+
+
 def plan_zones(db: Session, study: CatchmentStudy, payload: ZonePlan) -> CatchmentStudy:
     if study.status in {"completed", "reused"}:
         raise ValueError("Completed or reused studies do not need new zones")
     if study.zones:
         raise ValueError("Zones have already been created for this study")
+    suggestion_lookup = {item["id"]: item for item in (study.lane_suggestions or [])}
+    if set(payload.included_lane_ids) - suggestion_lookup.keys():
+        raise ValueError("Selected mapped lanes must belong to this study snapshot")
     assignees = []
     for user_id in payload.assignee_ids:
         user = DEMO_USERS.get(user_id)
@@ -244,12 +269,19 @@ def plan_zones(db: Session, study: CatchmentStudy, payload: ZonePlan) -> Catchme
                 geometry=from_shape(geometry, srid=4326),
                 assignee_id=assignee.id,
                 assignee_name=assignee.name,
+                suggested_lane_ids=[],
             )
         )
     for index, zone in enumerate(zones):
         left = _multi(to_shape(zone.geometry))
         if any(zones_overlap(left, _multi(to_shape(other.geometry))) for other in zones[index + 1 :]):
             raise ValueError("Survey zones must not overlap")
+    for lane_id in payload.included_lane_ids:
+        lane = _to_metric(shape(suggestion_lookup[lane_id]["geometry"]))
+        lengths = [lane.intersection(_to_metric(to_shape(zone.geometry))).length for zone in zones]
+        best_index = max(range(len(zones)), key=lengths.__getitem__)
+        if lengths[best_index] > 0:
+            zones[best_index].suggested_lane_ids.append(lane_id)
     db.add_all(zones)
     study.status = "assigned"
     db.commit()
@@ -290,6 +322,8 @@ def submit_lane(
         if existing.zone_id != zone.id or existing.submitted_by_id != principal.id:
             raise PermissionError("Submission ID already belongs to different survey work")
         return existing
+    if payload.suggested_lane_id and payload.suggested_lane_id not in (zone.suggested_lane_ids or []):
+        raise PermissionError("Selected mapped lane is not assigned to this zone")
     settings = settings or get_settings()
     point = from_shape(Point(payload.longitude, payload.latitude), srid=4326)
     distance = float(
@@ -408,6 +442,7 @@ def serialize_lane(item: LaneCapture) -> LaneSubmissionResponse:
         client_submission_id=item.client_submission_id,
         zone_id=item.zone_id,
         lane_name=item.lane_name,
+        suggested_lane_id=item.suggested_lane_id,
         latitude=point.y,
         longitude=point.x,
         gps_accuracy_m=item.gps_accuracy_m,
@@ -426,6 +461,9 @@ def serialize_lane(item: LaneCapture) -> LaneSubmissionResponse:
 
 
 def serialize_zone(item: SurveyZone) -> SurveyZoneResponse:
+    observed_ids = {capture.suggested_lane_id for capture in item.submissions if capture.suggested_lane_id}
+    suggested_lanes = [{**suggestion, "observed": suggestion["id"] in observed_ids}
+                       for suggestion in (item.study.lane_suggestions or []) if suggestion["id"] in (item.suggested_lane_ids or [])]
     return SurveyZoneResponse(
         id=item.id,
         study_id=item.study_id,
@@ -436,6 +474,8 @@ def serialize_zone(item: SurveyZone) -> SurveyZoneResponse:
         assignee_name=item.assignee_name,
         status=item.status,
         mismatch_review=item.mismatch_review,
+        suggested_lane_ids=item.suggested_lane_ids or [],
+        suggested_lanes=suggested_lanes,
         submission_count=len(item.submissions),
         submissions=[serialize_lane(capture) for capture in item.submissions],
         created_at=item.created_at,
@@ -446,6 +486,7 @@ def serialize_zone(item: SurveyZone) -> SurveyZoneResponse:
 def serialize_study(item: CatchmentStudy) -> CatchmentStudyResponse:
     completed = sum(zone.status == "completed" for zone in item.zones)
     progress = 100.0 if item.status in {"completed", "reused"} else round(completed / len(item.zones) * 100, 1) if item.zones else 0.0
+    observed_ids = {capture.suggested_lane_id for zone in item.zones for capture in zone.submissions if capture.suggested_lane_id}
     return CatchmentStudyResponse(
         id=item.id,
         property_id=item.property_id,
@@ -463,6 +504,10 @@ def serialize_study(item: CatchmentStudy) -> CatchmentStudyResponse:
         reuse_min_coverage=round(item.reuse_min_coverage * 100, 1),
         progress_percent=progress,
         summary=item.summary,
+        lane_suggestions=[{**suggestion, "observed": suggestion["id"] in observed_ids}
+                          for suggestion in (item.lane_suggestions or [])],
+        lane_suggestions_fetched_at=item.lane_suggestions_fetched_at,
+        lane_suggestions_error=item.lane_suggestions_error,
         zones=[serialize_zone(zone) for zone in item.zones],
         created_at=item.created_at,
         completed_at=item.completed_at,

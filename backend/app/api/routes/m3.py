@@ -30,6 +30,7 @@ from app.m3_surveys.service import (
     list_studies,
     list_zones,
     plan_zones,
+    refresh_lane_suggestions,
     serialize_lane,
     serialize_study,
     serialize_zone,
@@ -106,6 +107,22 @@ def catchment_plan_zones(
         raise HTTPException(status_code=404, detail="Catchment study not found")
     try:
         return serialize_study(plan_zones(db, study, payload))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/catchment-studies/{study_id}/lane-suggestions", response_model=CatchmentStudyResponse)
+def catchment_suggest_lanes(
+    study_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    _principal: Annotated[Principal, Depends(require_survey_manager_principal)],
+    force: bool = False,
+) -> CatchmentStudyResponse:
+    study = get_study(db, study_id)
+    if not study:
+        raise HTTPException(status_code=404, detail="Catchment study not found")
+    try:
+        return serialize_study(refresh_lane_suggestions(db, study, force=force))
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

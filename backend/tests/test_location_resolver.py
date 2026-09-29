@@ -1,12 +1,16 @@
 import json
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import httpx
+from fastapi.testclient import TestClient
 from redis.exceptions import RedisError
 
 from app.core.config import Settings
+from app.db.dependencies import get_db
 from app.m1_areas import adapters
 from app.m1_areas.geometry import normalize_area_geometry
+from app.main import app
 
 POLYGON = {
     "type": "Polygon",
@@ -74,6 +78,19 @@ def test_official_pincode_file_and_missing_boundary(tmp_path) -> None:
     assert result.is_official is True
     assert result.source_id.endswith(":600042")
     assert adapters._search_ogd_pincodes("600001", settings) == []
+
+
+def test_unseeded_gcc_ward_is_unavailable() -> None:
+    app.dependency_overrides[get_db] = lambda: SimpleNamespace(get=lambda *_args: None)
+    try:
+        response = TestClient(app).get(
+            "/api/v1/areas/wards/169",
+            headers={"X-Demo-Role": "bd-manager", "X-Demo-User-Id": "bd-manager-1"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 404
+    assert "boundary unavailable" in response.json()["detail"]
 
 
 def test_upstream_failure_uses_stale_cached_geography(monkeypatch) -> None:

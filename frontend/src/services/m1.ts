@@ -42,7 +42,7 @@ export type AreaSearchResult = GeographyProvenance & {
 export type AreaSelection = GeographyProvenance & {
   name: string;
   query?: string;
-  selection_method: "locality" | "pincode" | "cells" | "radius";
+  selection_method: "locality" | "pincode" | "cells" | "radius" | "ward";
   geometry: GeoJSONGeometry;
 };
 
@@ -124,6 +124,7 @@ import { apiRequest as request } from "./api";
 
 export const searchAreas = (query: string, method: "locality" | "pincode") =>
   request<AreaSearchResult[]>(`/areas/search?q=${encodeURIComponent(query)}&method=${method}`);
+export const getGccWard = (wardId: number) => request<AreaSelection>(`/areas/wards/${wardId}`);
 export const listStores = () => request<StoreLocation[]>("/areas/stores");
 
 export const createApproximateRadius = (result: AreaSearchResult, radius_m: number) =>

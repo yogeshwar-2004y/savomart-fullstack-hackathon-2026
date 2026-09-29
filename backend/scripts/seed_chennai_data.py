@@ -55,16 +55,15 @@ def seed(
     stores_path: Path, census_path: Path, wards_path: Path,
     store_payload: Any | None = None, store_status: str = "provided-snapshot",
 ) -> tuple[int, int]:
-    retrieved_at = datetime.fromtimestamp(
-        max(stores_path.stat().st_mtime, census_path.stat().st_mtime, wards_path.stat().st_mtime), UTC
-    )
+    store_snapshot_at = datetime.fromtimestamp(stores_path.stat().st_mtime, UTC)
+    ward_snapshot_at = datetime.fromtimestamp(wards_path.stat().st_mtime, UTC)
     stores = [
         row for row in _rows(
             store_payload if store_payload is not None else json.loads(stores_path.read_text(encoding="utf-8"))
         ) if row.get("is_operational", row.get("isOperational", True)) is not False
     ]
     if store_payload is not None:
-        retrieved_at = datetime.now(UTC)
+        store_snapshot_at = datetime.now(UTC)
     census = {}
     with census_path.open(newline="", encoding="utf-8-sig") as handle:
         for row in csv.DictReader(handle):
@@ -87,7 +86,7 @@ def seed(
                 location=from_shape(shape({"type": "Point", "coordinates": [longitude, latitude]}), srid=4326),
                 source_name=("Savomart operational store service" if store_status == "live" else "Savomart operational store snapshot"),
                 source_url=STORE_SOURCE_URL,
-                source_status=store_status, retrieved_at=retrieved_at,
+                source_status=store_status, retrieved_at=store_snapshot_at,
             ))
         seen = set()
         for feature in features:
@@ -101,7 +100,7 @@ def seed(
                 residential_buildings=int(row["residential_buildings"]),
                 households_2011=int(row["households_2011"]), population_2011=int(row["population_2011"]),
                 geometry=from_shape(geometry, srid=4326), boundary_source_url=WARD_SOURCE_URL,
-                census_source_url=CENSUS_SOURCE_URL, retrieved_at=retrieved_at,
+                census_source_url=CENSUS_SOURCE_URL, retrieved_at=ward_snapshot_at,
             ))
             seen.add(ward_id)
         db.commit()

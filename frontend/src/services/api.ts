@@ -17,7 +17,13 @@ function authHeaders(): Record<string, string> {
 export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...authHeaders(), ...(options?.headers as Record<string, string> | undefined) };
   if (!(options?.body instanceof FormData)) headers["Content-Type"] = "application/json";
-  const response = await fetch(`${apiBaseUrl}/api/v1${path}`, { ...options, headers });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}/api/v1${path}`, { ...options, headers });
+  } catch (reason) {
+    if (reason instanceof TypeError) throw new Error("Backend unavailable. Check the local API service and retry.");
+    throw reason;
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const detail = body.detail;
