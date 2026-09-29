@@ -26,7 +26,19 @@ def multi(min_x: float, min_y: float, max_x: float, max_y: float) -> MultiPolygo
 def test_overlap_ratio_supports_reuse_threshold() -> None:
     target = multi(80.20, 12.90, 80.30, 13.00)
     eighty_percent = multi(80.20, 12.90, 80.28, 13.00)
-    assert geometry_overlap_ratio(target, eighty_percent) == pytest.approx(0.8)
+    assert geometry_overlap_ratio(target, eighty_percent) == pytest.approx(0.8, abs=0.00002)
+    assert geometry_overlap_ratio(target, multi(80.31, 12.90, 80.32, 13.00)) == 0
+
+
+def test_union_of_recent_study_coverage_can_meet_reuse_threshold() -> None:
+    target = multi(80.20, 12.90, 80.30, 13.00)
+    west = multi(80.20, 12.90, 80.24, 13.00)
+    east = multi(80.24, 12.90, 80.28, 13.00)
+    combined = MultiPolygon([*west.geoms, *east.geoms])
+
+    assert geometry_overlap_ratio(target, west) == pytest.approx(0.4, abs=0.002)
+    assert geometry_overlap_ratio(target, east) == pytest.approx(0.4, abs=0.002)
+    assert geometry_overlap_ratio(target, combined) == pytest.approx(0.8, abs=0.002)
     assert geometry_overlap_ratio(target, multi(80.31, 12.90, 80.32, 13.00)) == 0
 
 

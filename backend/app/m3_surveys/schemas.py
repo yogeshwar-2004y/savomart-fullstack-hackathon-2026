@@ -83,6 +83,7 @@ class CatchmentStudyResponse(BaseModel):
     survey_geometry: dict[str, Any]
     status: str
     source_study_id: UUID | None
+    source_study_ids: list[UUID]
     reuse_coverage: float
     reuse_age_days: float | None
     reuse_max_age_days: int

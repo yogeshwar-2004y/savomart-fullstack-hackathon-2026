@@ -4,8 +4,9 @@ from uuid import UUID
 
 from geoalchemy2 import Geography
 from geoalchemy2.shape import from_shape, to_shape
+from pyproj import Transformer
 from shapely.geometry import MultiPolygon, Point, Polygon, box, mapping
-from shapely.ops import unary_union
+from shapely.ops import transform, unary_union
 from sqlalchemy import cast, func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -31,6 +32,17 @@ from app.m3_surveys.schemas import (
 )
 from app.scoring.property_v2 import SCORING_VERSION, score_with_catchment
 
+_TO_CHENNAI_METRES = Transformer.from_crs("EPSG:4326", "EPSG:32644", always_xy=True)
+_FROM_CHENNAI_METRES = Transformer.from_crs("EPSG:32644", "EPSG:4326", always_xy=True)
+
+
+def _to_metric(geometry):
+    return transform(_TO_CHENNAI_METRES.transform, geometry)
+
+
+def _to_wgs84(geometry):
+    return transform(_FROM_CHENNAI_METRES.transform, geometry)
+
 
 def _multi(geometry) -> MultiPolygon:
     if not geometry.is_valid:
@@ -46,13 +58,14 @@ def _multi(geometry) -> MultiPolygon:
 
 
 def geometry_overlap_ratio(target: MultiPolygon, coverage: MultiPolygon) -> float:
-    if target.is_empty or target.area <= 0:
+    metric_target = _to_metric(target)
+    if target.is_empty or metric_target.area <= 0:
         return 0
-    return max(0.0, min(1.0, target.intersection(coverage).area / target.area))
+    return max(0.0, min(1.0, metric_target.intersection(_to_metric(coverage)).area / metric_target.area))
 
 
 def zones_overlap(left: MultiPolygon, right: MultiPolygon) -> bool:
-    return left.intersection(right).area > 1e-12
+    return _to_metric(left).intersection(_to_metric(right)).area > 1e-6
 
 
 def _target_geometry(db: Session, payload: StudyCreate, settings: Settings):
@@ -133,18 +146,26 @@ def create_study(
         )
         .order_by(CatchmentStudy.completed_at.desc())
     ).all()
-    best = None
-    best_coverage = 0.0
+    source_studies: list[CatchmentStudy] = []
+    covered = MultiPolygon([])
     for candidate in candidates:
-        coverage = geometry_overlap_ratio(target, _multi(to_shape(candidate.target_geometry)))
-        if coverage > best_coverage:
-            best, best_coverage = candidate, coverage
+        candidate_geometry = _multi(to_shape(candidate.target_geometry))
+        newly_covered = candidate_geometry if covered.is_empty else candidate_geometry.difference(covered)
+        if newly_covered.is_empty:
+            continue
+        newly_covered = _multi(newly_covered)
+        if _to_metric(newly_covered).area > 1.0:
+            source_studies.append(candidate)
+            covered = _multi(unary_union([covered, candidate_geometry])) if not covered.is_empty else candidate_geometry
+
+    best = source_studies[0] if source_studies else None
+    best_coverage = geometry_overlap_ratio(target, covered) if source_studies else 0.0
 
     now = datetime.now(UTC)
     eligible = best is not None and best_coverage >= settings.catchment_reuse_min_coverage
-    survey_geometry = target
-    if best and best_coverage > 0 and not eligible:
-        survey_geometry = _multi(target.difference(to_shape(best.target_geometry)))
+    survey_geometry = MultiPolygon([]) if eligible else target
+    if source_studies and not eligible:
+        survey_geometry = _multi(target.difference(covered))
     study = CatchmentStudy(
         property_id=prop.id if prop else None,
         area_report_id=report.id if report else None,
@@ -156,6 +177,7 @@ def create_study(
         requested_by_id=principal.id,
         requested_by_name=principal.name,
         source_study_id=best.id if best else None,
+        source_study_ids=[str(item.id) for item in source_studies],
         reuse_coverage=round(best_coverage, 4),
         reuse_age_days=round((now - best.completed_at).total_seconds() / 86400, 2) if best and best.completed_at else None,
         reuse_max_age_days=settings.catchment_reuse_max_age_days,
@@ -164,7 +186,7 @@ def create_study(
         completed_at=now if eligible else None,
     )
     if study.summary is not None:
-        study.summary["reused_from_study_id"] = str(best.id)
+        study.summary["reused_from_study_ids"] = [str(item.id) for item in source_studies]
         study.summary["reuse_coverage_percent"] = round(best_coverage * 100, 1)
     db.add(study)
     db.flush()
@@ -204,13 +226,14 @@ def plan_zones(db: Session, study: CatchmentStudy, payload: ZonePlan) -> Catchme
         assignees.append(user)
 
     survey = _multi(to_shape(study.survey_geometry))
-    min_x, min_y, max_x, max_y = survey.bounds
+    metric_survey = _to_metric(survey)
+    min_x, min_y, max_x, max_y = metric_survey.bounds
     width = (max_x - min_x) / payload.zone_count
     zones = []
     for index in range(payload.zone_count):
         right = max_x if index == payload.zone_count - 1 else min_x + width * (index + 1)
         strip = box(min_x + width * index, min_y, right, max_y)
-        geometry = _multi(survey.intersection(strip))
+        geometry = _multi(_to_wgs84(metric_survey.intersection(strip)))
         if geometry.is_empty:
             raise ValueError("The requested split produced an empty work zone")
         assignee = assignees[index % len(assignees)]
@@ -338,8 +361,13 @@ def _complete_study(db: Session, study_id: UUID) -> None:
     )
     target = _multi(to_shape(study.target_geometry))
     covered_geometries = [_multi(to_shape(zone.geometry)) for zone in study.zones if zone.status == "completed"]
-    if study.source_study:
-        covered_geometries.append(_multi(to_shape(study.source_study.target_geometry)))
+    source_ids = [UUID(value) for value in (study.source_study_ids or [])]
+    if not source_ids and study.source_study_id:
+        source_ids = [study.source_study_id]
+    source_studies = db.scalars(
+        select(CatchmentStudy).where(CatchmentStudy.id.in_(source_ids))
+    ).all() if source_ids else []
+    covered_geometries.extend(_multi(to_shape(item.target_geometry)) for item in source_studies)
     coverage = geometry_overlap_ratio(target, _multi(unary_union(covered_geometries)))
     now = datetime.now(UTC)
     study.status = "completed"
@@ -428,6 +456,7 @@ def serialize_study(item: CatchmentStudy) -> CatchmentStudyResponse:
         survey_geometry=_geojson(item.survey_geometry),
         status=item.status,
         source_study_id=item.source_study_id,
+        source_study_ids=[UUID(value) for value in (item.source_study_ids or [])],
         reuse_coverage=round(item.reuse_coverage * 100, 1),
         reuse_age_days=item.reuse_age_days,
         reuse_max_age_days=item.reuse_max_age_days,

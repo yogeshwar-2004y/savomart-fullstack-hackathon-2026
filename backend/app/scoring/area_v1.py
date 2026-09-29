@@ -81,7 +81,7 @@ def score_area(
         "raw_value": None, "raw_unit": "unavailable", "normalized_value": 0.0, "weight": 0.0,
         "contribution": 0.0, "source_name": "No approved people dataset configured", "source_url": None,
         "fetched_at": fetched_at, "geography": provenance["geography"],
-        "transformation": "Excluded from area-fitness-v1; no proxy is converted into a people estimate.",
+        "transformation": f"Excluded from {SCORING_VERSION}; no proxy is converted into a people estimate.",
         "limitations": "OpenStreetMap feature counts are not population or household data. Validate demand through an approved demographic source or field study.",
         "evidence_kind": "missing", "cache_age_seconds": None,
     })

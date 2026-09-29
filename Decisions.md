@@ -4,7 +4,7 @@
 **Source:** Savomart Full Stack Hackathon brief and our planning discussion  
 **Decision:** Build **Approach A**, the focused end-to-end M1–M3 product, with selected ideas from Approach B. Include Redis for background analysis jobs and cached external data. This is the working direction for subsequent design and implementation chats.
 
-**Detailed design:** [ARCHITECTURE.md](ARCHITECTURE.md). Both files describe the agreed plan, not completed implementation.
+**Architecture:** [ARCHITECTURE_MERGED.md](ARCHITECTURE_MERGED.md) is the current architecture and implementation reference. The older [ARCHITECTURE.md](ARCHITECTURE.md) and [ARCHITECTURE_c.md](ARCHITECTURE_c.md) are retained as historical design drafts.
 
 ## Product and example
 

@@ -27,6 +27,9 @@ docker compose logs -f worker
 backend/.venv/bin/python backend/scripts/verify_m1_flow.py
 backend/.venv/bin/python backend/scripts/verify_m2_flow.py
 backend/.venv/bin/python backend/scripts/verify_m3_flow.py
+docker compose exec -e PYTHONPATH=/app api python scripts/verify_spatial_buffers.py
+docker compose exec -e PYTHONPATH=/app api python scripts/verify_m3_reuse_union.py
+docker compose exec -e PYTHONPATH=/app api python scripts/verify_full_workflow.py
 ```
 
 Stop with `docker compose down`. Data volumes are retained. Use `docker compose down -v` only when you deliberately want to erase the local database and Redis data.
@@ -59,8 +62,8 @@ Role-scoped requests require both `X-Demo-Role` and `X-Demo-User-Id`. Bundled id
 ## M3 flow
 
 - A BD Manager requests a catchment against a property or saved M1 area report. Property targets use a configurable 1 km PostGIS radius; area targets retain the saved M1 polygon.
-- Before work is created, PostGIS finds completed studies intersecting the target. A study no more than **90 days** old and covering at least **80%** of the target is reused immediately. The new record links its source study, age, coverage, summary, and creates no survey zones.
-- Partial overlap below 80% is recorded and removed from `survey_geometry`; only the uncovered remainder is assigned. Both thresholds are configurable with `CATCHMENT_REUSE_MAX_AGE_DAYS` and `CATCHMENT_REUSE_MIN_COVERAGE`.
+- Before work is created, the system unions all recent completed study coverage (90-day maximum age by default). If the union covers at least **80%** of the target, it is reused immediately. The new record stores every contributing source study ID, age, combined coverage, and creates no survey zones.
+- Partial combined overlap below 80% is recorded and removed from `survey_geometry`; only the uncovered remainder is assigned. Both thresholds are configurable with `CATCHMENT_REUSE_MAX_AGE_DAYS` and `CATCHMENT_REUSE_MIN_COVERAGE`.
 - The Survey Manager reviews target, remaining geometry, reuse provenance, zones, assignments, and progress on OpenStreetMap. The server partitions the remaining polygon into 1-8 clipped, non-overlapping longitudinal work zones and assigns them round-robin to selected executives.
 - Survey Executives capture lane/street, point location, GPS accuracy, observation time, residential and commercial unit counts, pedestrian and vehicle activity ratings, and notes. Points outside a zone by more than the greater of reported GPS accuracy or 100 m are retained but flagged for manager review.
 - Every lane submission carries a browser-generated UUID. Retrying the same UUID returns the original record rather than creating a duplicate. Executives receive `404` for another executive's zone.
@@ -105,7 +108,7 @@ The UI legend distinguishes real geography, real sourced data, proxy data, and d
 
 ## Scoring rules
 
-The deterministic ruleset is versioned as `area-fitness-v1`. Each normalized value is clamped to `0..1`; contribution is `normalized * weight * 100`.
+The deterministic ruleset is versioned as `area-fitness-v2`. Each normalized value is clamped to `0..1`; contribution is `normalized * weight * 100`.
 
 | Signal | Normalization | Weight |
 |---|---|---:|
@@ -126,7 +129,7 @@ If store data is unavailable, coverage gap uses a documented neutral normalized 
 - `postgres`: PostgreSQL 16/PostGIS is authoritative for area geometry, job progress, reports, evidence, and source snapshots.
 - `redis`: RQ queue plus bounded external-data cache.
 
-Core M1 tables are `areas`, `area_analyses`, `analysis_jobs`, `area_reports`, `area_metric_evidence`, `scouting_suggestions`, and `external_data_snapshots`. M2 adds `scout_assignments`, `properties`, `property_photos`, `property_evaluations`, and `property_stage_transitions`. M3 adds `catchment_studies`, `survey_zones`, and `lane_captures`. Area, catchment, zone, assignment, suggestion, property, and lane geometries use SRID 4326 with GiST spatial indexes. See [ARCHITECTURE.md](ARCHITECTURE.md) and [Decisions.md](Decisions.md) for the agreed design.
+Core M1 tables are `areas`, `area_analyses`, `analysis_jobs`, `area_reports`, `area_metric_evidence`, `scouting_suggestions`, and `external_data_snapshots`. M2 adds `scout_assignments`, `properties`, `property_photos`, `property_evaluations`, and `property_stage_transitions`. M3 adds `catchment_studies`, `survey_zones`, and `lane_captures`; `source_study_ids` tracks each prior study contributing reused coverage. Stored geometry uses SRID 4326 with GiST spatial indexes. M2's 750 m evidence buffer uses PostGIS geography; M3 area/overlap ratios and zone partitions use EPSG:32644 metre coordinates. See [ARCHITECTURE_MERGED.md](ARCHITECTURE_MERGED.md) for the current architecture and [Decisions.md](Decisions.md) for scope and product decisions.
 
 ## Development checks
 
@@ -155,7 +158,8 @@ npm audit
 - No approved Census/OGD demographic dataset has been normalized to the selected boundary yet, so people metrics are unavailable and excluded from scoring.
 - Demo role switching is not production authentication. Property photos use local/Docker-volume storage rather than production object storage, distances are straight-line rather than routed, and field details are not independently verified.
 - M2 performs evaluation during property submission, so a slow public Overpass request can delay the save; the configured cache and labeled demo fallback keep the hackathon walkthrough available. A production deployment should move enrichment to a durable job.
-- M3 uses straight longitudinal polygon strips clipped to the target rather than road-network workload balancing. Managers cannot manually redraw vertices in this version.
+- M3 uses projected longitudinal polygon strips clipped to the target rather than road-network workload balancing. Managers cannot manually redraw vertices in this version.
+- For multi-study reuse, coverage geometry and source IDs are combined. The study's observation statistics currently come from the most recent contributing study rather than a spatially deduplicated aggregation of all source observations; interpret reused scores with that limitation.
 - Draft recovery is device-local. It does not sync drafts across devices, merge conflicts, cache map tiles, or upload photos offline.
 - Completed zones require at least one observation, but this version does not impose a statistically representative lane sample size. Managers must inspect coverage and limitations.
 - Advanced cannibalisation, OSRM routing, PDF export, full offline sync, and a conversational analyst remain out of scope.

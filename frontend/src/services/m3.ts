@@ -19,7 +19,8 @@ export type CatchmentStudy = {
   id: string; property_id?: string | null; area_report_id?: string | null;
   target_type: "property" | "area_report"; target_label: string;
   target_geometry: GeoJSONGeometry; survey_geometry: GeoJSONGeometry; status: string;
-  source_study_id?: string | null; reuse_coverage: number; reuse_age_days?: number | null;
+  source_study_id?: string | null; source_study_ids: string[];
+  reuse_coverage: number; reuse_age_days?: number | null;
   reuse_max_age_days: number; reuse_min_coverage: number; progress_percent: number;
   summary?: Record<string, unknown> | null; zones: SurveyZone[];
   created_at: string; completed_at?: string | null;

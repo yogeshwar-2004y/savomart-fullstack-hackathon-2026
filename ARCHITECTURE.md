@@ -1,8 +1,6 @@
-# Savo SiteScout — Architecture
+# Savo SiteScout — Historical Architecture Draft
 
-**Status:** Agreed design, 28 September 2026  
-**Companion:** [Project decisions](Savo_SiteScout_Project_Decisions.md)  
-**Scope:** Approach A (complete M1–M3) with selected Approach B features and Redis. This describes planned implementation, not completed code.
+This 28 September 2026 draft is retained for design history and is not the implementation source of truth. It contains superseded details, including an optional AI narrator. Use [ARCHITECTURE_MERGED.md](ARCHITECTURE_MERGED.md) for the current system and [Decisions.md](Decisions.md) for the agreed product scope.
 
 ## End-to-end example
 

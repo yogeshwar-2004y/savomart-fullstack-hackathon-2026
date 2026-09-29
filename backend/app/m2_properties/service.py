@@ -1,10 +1,11 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-from geoalchemy2 import Geography
+from geoalchemy2 import Geography, Geometry
 from geoalchemy2.shape import from_shape, to_shape
-from shapely.geometry import MultiPolygon, Point, Polygon
+from shapely.geometry import MultiPolygon, Point, Polygon, shape
 from sqlalchemy import cast, func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -118,7 +119,7 @@ def capture_property(
     prop.photos = [PropertyPhoto(**photo.__dict__) for photo in photos]
     db.add(prop)
     db.flush()
-    evaluation = evaluate_property(prop, settings)
+    evaluation = evaluate_property(prop, settings, db)
     prop.evaluations.append(PropertyEvaluation(property_id=prop.id, version=1, scoring_version=SCORING_VERSION, **evaluation))
     prop.transitions.append(PropertyStageTransition(
         property_id=prop.id, from_stage=None, to_stage="scouted", actor_id=principal.id,
@@ -129,11 +130,8 @@ def capture_property(
     return get_property_record(db, prop.id)  # type: ignore[return-value]
 
 
-def evaluate_property(prop: Property, settings: Settings) -> dict:
-    point = to_shape(prop.location)
-    radius_degrees = settings.property_nearby_radius_m / 111_320
-    polygon = point.buffer(radius_degrees)
-    geometry = MultiPolygon([polygon]) if isinstance(polygon, Polygon) else polygon
+def evaluate_property(prop: Property, settings: Settings, db: Session) -> dict:
+    geometry = property_evidence_geometry(prop.location, settings.property_nearby_radius_m, db)
     osm = fetch_osm_signals(geometry, f"property-{prop.id}", settings)
     stores = fetch_store_signals(geometry, settings)
     fetched_at = max(osm.fetched_at, stores.fetched_at, datetime.now(UTC))
@@ -149,6 +147,20 @@ def evaluate_property(prop: Property, settings: Settings) -> dict:
     )
     result["source_snapshot_at"] = fetched_at
     return result
+
+
+def property_evidence_geometry(location, radius_m: int, db: Session) -> MultiPolygon:
+    buffered = cast(
+        func.ST_Buffer(cast(location, Geography), radius_m, "quad_segs=64"),
+        Geometry(srid=4326),
+    )
+    geojson = db.scalar(select(func.ST_AsGeoJSON(buffered)))
+    geometry = shape(json.loads(geojson))
+    if isinstance(geometry, Polygon):
+        return MultiPolygon([geometry])
+    if not isinstance(geometry, MultiPolygon):
+        raise ValueError("PostGIS returned an invalid property evidence buffer")
+    return geometry
 
 
 def _property_query():
