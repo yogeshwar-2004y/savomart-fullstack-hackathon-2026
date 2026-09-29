@@ -10,6 +10,7 @@ Requirements: Docker Desktop with Docker Compose.
 cp .env.example .env
 docker compose up --build -d
 docker compose exec api alembic upgrade head
+docker compose exec -e PYTHONPATH=/app api python scripts/seed_chennai_data.py
 ```
 
 Open `http://localhost:5173`, keep the demo role set to **BD Manager**, submit a search for `Velachery`, choose an OSM boundary (or an explicitly approximate radius when only a point is returned), and click **Start analysis**. The API is at `http://localhost:8000`; interactive API docs are at `http://localhost:8000/docs`.
@@ -44,6 +45,8 @@ Stop with `docker compose down`. Data volumes are retained. Use `docker compose 
 - The Redis/RQ worker records `queued -> fetching -> scoring -> completed` in PostgreSQL. Failures are saved with a useful message and can be retried up to three attempts.
 - Reports, metric provenance, suggestions, source snapshots, and geometry are saved in PostgreSQL/PostGIS. Redis is only the queue and short-lived external-response cache.
 - Saved reports can be reopened and compared. “Why this score?” exposes raw values, normalization, weight, contribution, source, fetch time, geography, evidence kind, cache age, and limitations.
+- The area map displays the 11 Chennai locations from the provided operational-store snapshot as purple SAVOmart pins. Each tooltip shows its source status and snapshot date; the browser never calls the internal store service.
+- The provided GCC 2011 ward population and household allocation is spatially joined to verified GCC ward polygons in PostGIS. Reports show area-weighted values only as zero-weight historical proxies with the interpolation limitation.
 
 Role-scoped requests require both `X-Demo-Role` and `X-Demo-User-Id`. Bundled identities are BD Manager `bd-manager-1`, BD Executives `bd-executive-1` / `bd-executive-2`, Survey Manager `survey-manager-1`, and Survey Executives `survey-executive-1` / `survey-executive-2`. The backend enforces role and assignment ownership; this remains lightweight hackathon identity, not production authentication.
 
@@ -99,12 +102,13 @@ Scores are labeled Strong candidate (`>=70`), Promising (`>=55`), Needs review (
 - **OGD India / Department of Posts** is the preferred pincode-boundary source. Download `All India Pincode Boundary Geo JSON` from the [official OGD catalog](https://www.data.gov.in/catalog/all-india-pincode-boundary-geo-json), place the GeoJSON or GeoJSONL file in `backend/data/`, and set `OGD_PINCODE_BOUNDARIES_PATH=/app/data/<filename>`. The source is released under the Government Open Data License - India. The app does not silently substitute a geocoded point for a PIN polygon.
 - **Public Chennai pincode feature layer** provides configurable fallback coverage, including `600042`. It is labeled `third-party` and non-official because its publisher metadata does not establish Department of Posts authority. Set `CHENNAI_PINCODE_FEATURE_URL=` to disable it. A configured, matching OGD file always wins.
 - **OpenStreetMap Overpass API** supplies mapped buildings, shops, offices, amenities, transit features, and competitors inside the selected geometry. The worker filters bounding-box responses against the selected polygon.
-- **Savomart operational store service** is supported only when `STORE_SERVICE_URL` and `STORE_SERVICE_TOKEN` are supplied server-side in ignored `.env`. The adapter sends an HTTP `GET` with the token in the configured request header and no request body. No credentials are committed, logged, documented, or exposed to the browser.
+- **Savomart operational stores** come from `backend/data/savomart_operational_stores.json`, a provided 74-store operational snapshot containing 11 Chennai stores. The seed command validates stable store codes and coordinates before persisting them in PostGIS. When `STORE_SERVICE_URL` and `STORE_SERVICE_TOKEN` are supplied server-side in ignored `.env`, both the seed command and scoring adapter refresh through HTTP `GET` with redirects enabled and no request body; scoring caches the sanitized response in Redis. The supplied snapshot is the labelled fallback; no credential is committed, logged, documented, or exposed to the browser.
+- **GCC ward census source** combines the attached `gcc_ward_population_census_2011.csv` with a 200-feature snapshot from the official GCC `GCC_AdminBoundary` ward layer. The join requires one unique row and polygon for every ward ID from 001 through 200. Population and household values remain historical 2011, are area-weighted for arbitrary selections, have zero scoring weight, and are visibly labelled proxy data.
 - **Bundled demo evidence** keeps the Velachery scoring walkthrough usable if Overpass or the store service is unavailable. It is labeled `demo/simulated` beside affected values. Bundled store points are illustrative, not current operational-store claims. There is no bundled demo geography fallback.
 - **Simulated signal fallback** keeps arbitrary map-cell workflows usable when Overpass and Redis cache are both unavailable. It uses fixed density baselines, is labeled `demo/simulated` on every affected metric, and explicitly says it is not an observation about the selected area. Set `ALLOW_SIMULATED_SIGNAL_FALLBACK=false` to make these jobs fail instead.
 - **Redis cache** keeps successful OSM responses for one hour and an eligible stale snapshot for seven days. If an upstream failure causes stale evidence to be used, the report is labeled `cached` and shows its age.
 
-The UI legend distinguishes real geography, real sourced data, proxy data, and demo/simulated data. OpenStreetMap counts are mapped-feature coverage signals. They are **not** population, household, footfall, income, or complete business counts. M1 records people data as unavailable with zero scoring weight. Residential-building density is labeled as a homes proxy, never converted into people. A real boundary does not make simulated business or store inputs real.
+The UI legend distinguishes real geography, real sourced data, proxy data, and demo/simulated data. OpenStreetMap counts are mapped-feature coverage signals. They are **not** population, household, footfall, income, or complete business counts. Seeded GCC people values are historical, area-weighted proxies with zero scoring weight; without the seed they remain unavailable. Residential-building density is labeled as a homes proxy, never converted into people. A real boundary does not make simulated business or store inputs real.
 
 ## Scoring rules
 
@@ -121,6 +125,8 @@ The deterministic ruleset is versioned as `area-fitness-v2`. Each normalized val
 
 If store data is unavailable, coverage gap uses a documented neutral normalized value of `0.5`. Scores are labeled Strong fit (`>=70`), Promising (`>=55`), Needs validation (`>=40`), or Low evidence fit (`<40`). The explanation is generated deterministically from saved evidence; no LLM key or provider is required, and no LLM determines the score.
 
+The area-weighted 2011 population and household proxies are informational metrics with `0%` weight. They never alter the numeric fitness score.
+
 ## Architecture and schema
 
 - `frontend`: React, TypeScript, Vite, React Leaflet, and OpenStreetMap tiles.
@@ -129,7 +135,7 @@ If store data is unavailable, coverage gap uses a documented neutral normalized 
 - `postgres`: PostgreSQL 16/PostGIS is authoritative for area geometry, job progress, reports, evidence, and source snapshots.
 - `redis`: RQ queue plus bounded external-data cache.
 
-Core M1 tables are `areas`, `area_analyses`, `analysis_jobs`, `area_reports`, `area_metric_evidence`, `scouting_suggestions`, and `external_data_snapshots`. M2 adds `scout_assignments`, `properties`, `property_photos`, `property_evaluations`, and `property_stage_transitions`. M3 adds `catchment_studies`, `survey_zones`, and `lane_captures`; `source_study_ids` tracks each prior study contributing reused coverage. Stored geometry uses SRID 4326 with GiST spatial indexes. M2's 750 m evidence buffer uses PostGIS geography; M3 area/overlap ratios and zone partitions use EPSG:32644 metre coordinates. See [ARCHITECTURE_MERGED.md](ARCHITECTURE_MERGED.md) for the current architecture and [Decisions.md](Decisions.md) for scope and product decisions.
+Core M1 tables are `areas`, `area_analyses`, `analysis_jobs`, `area_reports`, `area_metric_evidence`, `scouting_suggestions`, `external_data_snapshots`, `operational_stores`, and `ward_census`. M2 adds `scout_assignments`, `properties`, `property_photos`, `property_evaluations`, and `property_stage_transitions`. M3 adds `catchment_studies`, `survey_zones`, and `lane_captures`; `source_study_ids` tracks each prior study contributing reused coverage. Stored geometry uses SRID 4326 with GiST spatial indexes. M2's 750 m evidence buffer uses PostGIS geography; M3 area/overlap ratios and zone partitions use EPSG:32644 metre coordinates. See [ARCHITECTURE_MERGED.md](ARCHITECTURE_MERGED.md) for the current architecture and [Decisions.md](Decisions.md) for scope and product decisions.
 
 ## Development checks
 
@@ -161,7 +167,7 @@ The complete persona workflow has been verified locally through Docker Compose a
 - Location cache entries live for 24 hours; stale cached lookups are eligible for seven days only after an upstream failure, and their age is shown. Overpass signal cache remains one hour with the same seven-day stale ceiling.
 - Map cells are geographic squares rather than a city-wide precomputed grid. This is deliberate: there is no mandatory H3 heatmap.
 - Straight-line store distance is used instead of routing time. Scouting suggestions are mapped activity clusters that require field validation.
-- No approved Census/OGD demographic dataset has been normalized to the selected boundary yet, so people metrics are unavailable and excluded from scoring.
+- The GCC people source is a 2011 ward allocation, not a current census. Area-weighting assumes uniform distribution within each intersected ward, so it is a planning proxy rather than an exact selected-area count and remains excluded from scoring.
 - Demo role switching is not production authentication. Property photos use local/Docker-volume storage rather than production object storage, distances are straight-line rather than routed, and field details are not independently verified.
 - M2 performs evaluation during property submission, so a slow public Overpass request can delay the save; the configured cache and labeled demo fallback keep the hackathon walkthrough available. A production deployment should move enrichment to a durable job.
 - M3 uses projected longitudinal polygon strips clipped to the target rather than road-network workload balancing. Managers cannot manually redraw vertices in this version.

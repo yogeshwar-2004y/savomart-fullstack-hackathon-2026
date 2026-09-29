@@ -313,6 +313,10 @@ button:disabled {
   opacity: 0.5;
 }
 
+.savo-store-marker { background: transparent; border: 0; }
+.savo-store-pin { align-items: center; background: #782b90; border: 3px solid #fff; border-radius: 50% 50% 50% 8%; box-shadow: 0 2px 7px #32103d66; color: #fff200; display: flex; height: 27px; justify-content: center; transform: rotate(-45deg); width: 27px; }
+.savo-store-pin b { font-size: 13px; line-height: 1; transform: rotate(45deg); }
+
 .selection-summary {
   background: #f7f4f8;
   border-left: 4px solid #782b90;

@@ -124,3 +124,19 @@ def test_grid_signal_query_uses_labelled_demo_fallback_after_upstream_failure(mo
     assert snapshot.evidence_kind == "demo"
     assert snapshot.source == "Simulated M1 fallback baseline"
     assert "not observations" in snapshot.limitations
+
+
+def test_operational_store_parser_supports_nested_coordinates() -> None:
+    stores = adapters._parse_operational_stores({"data": [
+        {"store_code": "CHN-1", "name": "Valid", "zone": "CHN", "is_operational": True,
+         "geocoordinates": {"latitude": 12.97, "longitude": 80.25}},
+        {"store_code": "CHN-2", "name": "Closed", "is_operational": False,
+         "geocoordinates": {"latitude": 13.01, "longitude": 80.20}},
+        {"store_code": "BAD", "name": "Invalid", "is_operational": True,
+         "geocoordinates": {"latitude": 200, "longitude": 80.20}},
+    ]})
+
+    assert stores == [{
+        "code": "CHN-1", "name": "Valid", "lat": 12.97, "lon": 80.25,
+        "zone": "CHN", "address": None,
+    }]

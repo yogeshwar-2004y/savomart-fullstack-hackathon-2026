@@ -5,6 +5,18 @@ export type GeoJSONGeometry = {
 
 export type GeoJSONPoint = { type: "Point"; coordinates: [number, number] };
 
+export type StoreLocation = {
+  store_code: string;
+  name: string;
+  address?: string | null;
+  latitude: number;
+  longitude: number;
+  source: string;
+  source_url?: string | null;
+  source_status: string;
+  retrieved_at: string;
+};
+
 export type GeographyProvenance = {
   source: string;
   source_id: string;
@@ -112,6 +124,7 @@ import { apiRequest as request } from "./api";
 
 export const searchAreas = (query: string, method: "locality" | "pincode") =>
   request<AreaSearchResult[]>(`/areas/search?q=${encodeURIComponent(query)}&method=${method}`);
+export const listStores = () => request<StoreLocation[]>("/areas/stores");
 
 export const createApproximateRadius = (result: AreaSearchResult, radius_m: number) =>
   request<AreaSelection>("/areas/approximate-radius", {

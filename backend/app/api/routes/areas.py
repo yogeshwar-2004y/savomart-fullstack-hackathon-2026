@@ -14,6 +14,7 @@ from app.db.dependencies import get_db
 from app.db.models import AnalysisJob, Area, AreaAnalysis
 from app.jobs.queue import enqueue_area_analysis
 from app.m1_areas.adapters import search_chennai_areas
+from app.m1_areas.data_sources import list_chennai_stores
 from app.m1_areas.geometry import (
     InvalidAreaGeometry,
     area_sq_km,
@@ -26,10 +27,16 @@ from app.m1_areas.schemas import (
     AreaSearchResult,
     RadiusAreaRequest,
     RadiusAreaResponse,
+    StoreLocationResponse,
 )
 from app.scoring.area_v1 import SCORING_VERSION
 
 router = APIRouter(prefix="/areas")
+
+
+@router.get("/stores", response_model=list[StoreLocationResponse])
+def operational_stores(db: Annotated[Session, Depends(get_db)]) -> list[dict]:
+    return list_chennai_stores(db)
 
 
 @router.get("/search", response_model=list[AreaSearchResult])

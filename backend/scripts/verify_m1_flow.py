@@ -37,6 +37,7 @@ def run_analysis(area: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
 
 def main() -> None:
     health = request("GET", "/health")
+    stores = request("GET", "/areas/stores")
     search = request("GET", "/areas/search?q=Velachery&method=locality")[0]
     anna_nagar = request("GET", "/areas/search?q=Anna%20Nagar&method=locality")[0]
     pincode = request("GET", "/areas/search?q=600042&method=pincode")[0]
@@ -70,7 +71,12 @@ def main() -> None:
         "fetched_at", "geography", "limitations",
     }
     check(all(required_metric_fields <= metric.keys() for metric in velachery["metrics"]), "Metric provenance is incomplete")
-    check(any(metric["category"] == "people" and metric["raw_value"] is None for metric in velachery["metrics"]), "Missing people data is not labelled")
+    people = [metric for metric in velachery["metrics"] if metric["category"] == "people"]
+    store_metrics = [metric for metric in velachery["metrics"] if metric["category"] == "savomart"]
+    check(people and all(metric["weight"] == 0 for metric in people), "People evidence must remain zero-weight")
+    check(all(metric["evidence_kind"] == "proxy" and metric["raw_value"] is not None for metric in people), "Seeded people proxy is missing or mislabelled")
+    check(store_metrics and all(metric["evidence_kind"] != "demo" for metric in store_metrics), "Operational store snapshot was replaced by demo evidence")
+    check(len(stores) == 11 and all(store["source_status"] == "provided-snapshot" for store in stores), "Chennai store snapshot is incomplete")
     check(bool(velachery["suggestions"]), "Velachery has no scouting suggestions")
     check(velachery["geometry"] == search["geometry"], "Saved geometry differs from resolved geometry")
     check(velachery["source_id"] == search["source_id"], "Saved source ID differs from resolved source ID")
@@ -85,6 +91,7 @@ def main() -> None:
         "velachery": {"score": velachery["score"], "states": velachery_states, "report_id": velachery["id"]},
         "cell": {"score": cell["score"], "states": cell_states, "report_id": cell["id"]},
         "comparison_delta": comparison["score_delta"],
+        "chennai_store_pins": len(stores),
         "saved_report_count": len(reports),
     })
 

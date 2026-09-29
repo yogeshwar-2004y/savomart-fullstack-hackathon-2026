@@ -15,6 +15,7 @@ from app.db.models import (
 )
 from app.db.session import SessionLocal
 from app.m1_areas.adapters import fetch_osm_signals, fetch_store_signals
+from app.m1_areas.data_sources import census_proxy_for_area
 from app.scoring.area_v1 import SCORING_VERSION, deterministic_summary, score_area
 
 
@@ -43,6 +44,7 @@ def run_area_analysis(job_id: str) -> str:
 
         osm = fetch_osm_signals(geometry, analysis.area.name)
         stores = fetch_store_signals(geometry)
+        population_proxy = census_proxy_for_area(db, str(analysis.area_id))
         _progress(job, analysis, "scoring", 70, f"Applying {SCORING_VERSION}")
         db.commit()
 
@@ -53,11 +55,12 @@ def run_area_analysis(job_id: str) -> str:
             "osm_limitations": osm.limitations, "store_source": stores.source,
             "store_kind": stores.evidence_kind, "store_limitations": stores.limitations,
             "cache_age_seconds": osm.cache_age_seconds,
+            "store_cache_age_seconds": stores.cache_age_seconds,
         }
         score, rating, metrics = score_area(
             area_sq_km=analysis.area.area_sq_km, counts=osm.counts,
             nearest_store_km=stores.nearest_store_km, provenance=provenance, fetched_at=fetched_at,
-            nearby_store_count=stores.nearby_store_count,
+            nearby_store_count=stores.nearby_store_count, population_proxy=population_proxy,
         )
         report = AreaReport(
             analysis_id=analysis.id, area_id=analysis.area_id,

@@ -32,6 +32,7 @@ def _clamp(value: float) -> float:
 def score_area(
     *, area_sq_km: float, counts: dict[str, float], nearest_store_km: float | None,
     provenance: dict[str, Any], fetched_at: datetime, nearby_store_count: int | None = None,
+    population_proxy: dict[str, Any] | None = None,
 ) -> tuple[float, str, list[dict[str, Any]]]:
     values = {
         "residential_density": counts.get("residential", 0) / area_sq_km,
@@ -74,17 +75,45 @@ def score_area(
             "contribution": contribution, "source_name": source_name, "source_url": source_url,
             "fetched_at": fetched_at, "geography": provenance["geography"],
             "transformation": transformation, "limitations": limitation,
-            "evidence_kind": kind, "cache_age_seconds": provenance.get("cache_age_seconds"),
+            "evidence_kind": kind, "cache_age_seconds": (
+                provenance.get("store_cache_age_seconds") if rule.key == "savomart_coverage_gap"
+                else provenance.get("cache_age_seconds")
+            ),
         })
-    metrics.append({
-        "key": "population", "category": "people", "label": "Population and household counts",
-        "raw_value": None, "raw_unit": "unavailable", "normalized_value": 0.0, "weight": 0.0,
-        "contribution": 0.0, "source_name": "No approved people dataset configured", "source_url": None,
-        "fetched_at": fetched_at, "geography": provenance["geography"],
-        "transformation": f"Excluded from {SCORING_VERSION}; no proxy is converted into a people estimate.",
-        "limitations": "OpenStreetMap feature counts are not population or household data. Validate demand through an approved demographic source or field study.",
-        "evidence_kind": "missing", "cache_age_seconds": None,
-    })
+    if population_proxy:
+        people_geography = (
+            f"Area-weighted intersection with {population_proxy['ward_count']} GCC ward polygon(s)"
+        )
+        common = {
+            "category": "people", "normalized_value": 0.0, "weight": 0.0, "contribution": 0.0,
+            "source_name": "GCC 2011 Census-derived ward allocation", "source_url": population_proxy["source_url"],
+            "fetched_at": population_proxy["retrieved_at"], "geography": people_geography,
+            "transformation": (
+                "Ward total multiplied by the selected-area share of each intersected ward, then summed; "
+                f"informational and excluded from {SCORING_VERSION}."
+            ),
+            "limitations": (
+                "Areal interpolation assumes residents are evenly distributed within each 2011 ward. "
+                "This is a planning proxy, not a current population count, household survey, or precise locality total."
+            ),
+            "evidence_kind": "proxy", "cache_age_seconds": None,
+        }
+        metrics.extend([
+            {**common, "key": "population", "label": "Area-weighted 2011 population proxy",
+             "raw_value": float(population_proxy["population_proxy"]), "raw_unit": "people proxy"},
+            {**common, "key": "households", "label": "Area-weighted 2011 household proxy",
+             "raw_value": float(population_proxy["household_proxy"]), "raw_unit": "households proxy"},
+        ])
+    else:
+        metrics.append({
+            "key": "population", "category": "people", "label": "Population and household counts",
+            "raw_value": None, "raw_unit": "unavailable", "normalized_value": 0.0, "weight": 0.0,
+            "contribution": 0.0, "source_name": "No spatially aligned people dataset configured", "source_url": None,
+            "fetched_at": fetched_at, "geography": provenance["geography"],
+            "transformation": f"Excluded from {SCORING_VERSION}; no proxy is converted into a people estimate.",
+            "limitations": "OpenStreetMap feature counts are not population or household data. Validate demand through an approved demographic source or field study.",
+            "evidence_kind": "missing", "cache_age_seconds": None,
+        })
     metrics.append({
         "key": "nearby_savomart_stores", "category": "savomart", "label": "Savomart stores within 5 km",
         "raw_value": None if nearby_store_count is None else float(nearby_store_count), "raw_unit": "stores",
@@ -93,7 +122,8 @@ def score_area(
         "fetched_at": fetched_at, "geography": provenance["geography"],
         "transformation": "Count of supplied store points within 5 km of the selected-area centroid; informational only.",
         "limitations": provenance.get("store_limitations", "Straight-line distance, not travel time."),
-        "evidence_kind": provenance.get("store_kind", "live"), "cache_age_seconds": None,
+        "evidence_kind": provenance.get("store_kind", "live"),
+        "cache_age_seconds": provenance.get("store_cache_age_seconds"),
     })
     total = round(sum(metric["contribution"] for metric in metrics), 1)
     rating = "Strong fit" if total >= 70 else "Promising" if total >= 55 else "Needs validation" if total >= 40 else "Low evidence fit"
@@ -105,8 +135,14 @@ def deterministic_summary(score: float, rating: str, metrics: list[dict[str, Any
     ranked = sorted(scored_metrics, key=lambda item: item["contribution"], reverse=True)
     strongest = ", ".join(item["label"].lower() for item in ranked[:2])
     weakest = min(scored_metrics, key=lambda item: item["normalized_value"])["label"].lower()
+    people = next((metric for metric in metrics if metric["category"] == "people"), None)
+    people_note = (
+        "Any displayed people values are zero-weight historical ward proxies, not current counts."
+        if people and people["evidence_kind"] == "proxy"
+        else "People data remains unavailable and has zero scoring weight."
+    )
     return (
         f"{rating} at {score:.1f}/100 under {SCORING_VERSION}. The largest contributions are "
         f"{strongest}. The weakest available signal is {weakest}. Mapped feature counts are coverage "
-        "signals, not population or household estimates; field scouting should validate the result."
+        f"signals, not population or household estimates. {people_note} Field scouting should validate the result."
     )

@@ -57,3 +57,28 @@ def test_store_coverage_gap_reaches_maximum_at_three_km() -> None:
     store_metric = next(metric for metric in metrics if metric["key"] == "savomart_coverage_gap")
     assert store_metric["normalized_value"] == 1.0
     assert store_metric["contribution"] == 10.0
+
+
+def test_census_proxy_is_informational_and_does_not_change_score() -> None:
+    fetched_at = datetime(2026, 9, 29, tzinfo=UTC)
+    provenance = {
+        "geography": "selected polygon", "osm_source": "test OSM", "osm_url": None,
+        "osm_kind": "live", "osm_limitations": "test limitation", "store_source": "test stores",
+        "store_kind": "snapshot", "store_limitations": "straight line", "cache_age_seconds": None,
+    }
+    baseline, _, _ = score_area(
+        area_sq_km=2, counts={}, nearest_store_km=2, provenance=provenance, fetched_at=fetched_at,
+    )
+    score, _, metrics = score_area(
+        area_sq_km=2, counts={}, nearest_store_km=2, provenance=provenance, fetched_at=fetched_at,
+        population_proxy={
+            "population_proxy": 12000, "household_proxy": 3100, "ward_count": 2,
+            "retrieved_at": fetched_at, "source_url": "https://example.test/gcc-census",
+        },
+    )
+
+    people = [metric for metric in metrics if metric["category"] == "people"]
+    assert score == baseline
+    assert len(people) == 2
+    assert all(metric["weight"] == 0 and metric["evidence_kind"] == "proxy" for metric in people)
+    assert people[0]["raw_value"] == 12000

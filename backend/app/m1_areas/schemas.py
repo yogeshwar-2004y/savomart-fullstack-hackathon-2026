@@ -170,3 +170,15 @@ class SearchQuery(BaseModel):
     @classmethod
     def validate_pincode(cls, value: str, info: Any) -> str:
         return value.strip()
+
+
+class StoreLocationResponse(BaseModel):
+    store_code: str
+    name: str
+    address: str | None
+    latitude: float
+    longitude: float
+    source: str
+    source_url: str | None
+    source_status: str
+    retrieved_at: datetime

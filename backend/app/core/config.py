@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     allow_simulated_signal_fallback: bool = True
     store_service_url: str | None = None
     store_service_token: str | None = None
+    store_snapshot_path: str | None = "data/savomart_operational_stores.json"
     property_photo_storage_path: str = "storage/property-photos"
     property_photo_max_bytes: int = 5_242_880
     property_nearby_radius_m: int = 750

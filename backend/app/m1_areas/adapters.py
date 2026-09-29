@@ -62,6 +62,8 @@ DEMO_STORES = [
     {"name": "Demo Thoraipakkam store", "lat": 12.9416, "lon": 80.2362},
 ]
 
+STORE_CACHE_KEY = "sitescout:stores:operational"
+
 
 def _cache_client(settings: Settings) -> Redis:
     return Redis.from_url(settings.redis_url, decode_responses=True, socket_connect_timeout=1, socket_timeout=1)
@@ -402,40 +404,117 @@ def _parse_overpass(payload: dict[str, Any], geometry: MultiPolygon) -> SignalSn
     )
 
 
+def _store_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("data", "stores", "results", "items"):
+            if isinstance(payload.get(key), list):
+                return payload[key]
+    return []
+
+
+def _parse_operational_stores(payload: Any) -> list[dict[str, Any]]:
+    stores = []
+    for row in _store_rows(payload):
+        if row.get("is_operational", row.get("isOperational", True)) is False:
+            continue
+        coordinates = row.get("geocoordinates") or row.get("coordinates") or {}
+        lat = coordinates.get("latitude", coordinates.get("lat", row.get("latitude", row.get("lat"))))
+        lon = coordinates.get(
+            "longitude", coordinates.get("lng", coordinates.get("lon", row.get("longitude", row.get("lng", row.get("lon")))))
+        )
+        try:
+            lat, lon = float(lat), float(lon)
+        except (TypeError, ValueError):
+            continue
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            continue
+        stores.append({
+            "code": str(row.get("store_code", row.get("storeCode", row.get("id", "")))),
+            "name": row.get("name", "Savomart store"), "lat": lat, "lon": lon,
+            "zone": row.get("zone"), "address": row.get("address"),
+        })
+    return stores
+
+
+def _snapshot_stores(settings: Settings) -> tuple[list[dict[str, Any]], datetime | None]:
+    if not settings.store_snapshot_path:
+        return [], None
+    path = Path(settings.store_snapshot_path)
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parents[2] / path
+    try:
+        stores = _parse_operational_stores(json.loads(path.read_text(encoding="utf-8")))
+        return stores, datetime.fromtimestamp(path.stat().st_mtime, UTC)
+    except (OSError, json.JSONDecodeError):
+        return [], None
+
+
+def _live_stores(settings: Settings) -> tuple[list[dict[str, Any]], str, int | None]:
+    if not settings.store_service_url or not settings.store_service_token:
+        return [], "missing", None
+    redis: Redis | None = None
+    try:
+        redis = _cache_client(settings)
+        cached = redis.get(STORE_CACHE_KEY)
+        if cached:
+            payload = json.loads(cached)
+            age = max(0, int((datetime.now(UTC) - datetime.fromisoformat(payload["fetched_at"])).total_seconds()))
+            return payload["stores"], "cached", age
+    except (RedisError, json.JSONDecodeError, KeyError, ValueError):
+        redis = None
+    try:
+        response = httpx.get(
+            settings.store_service_url,
+            headers={"X-cron-token": settings.store_service_token}, timeout=12,
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        stores = _parse_operational_stores(response.json())
+        if stores and redis:
+            payload = json.dumps({"stores": stores, "fetched_at": datetime.now(UTC).isoformat()})
+            redis.setex(STORE_CACHE_KEY, settings.external_cache_ttl_seconds, payload)
+            redis.setex(f"{STORE_CACHE_KEY}:stale", settings.stale_cache_ttl_seconds, payload)
+        return stores, "live", None
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError):
+        if redis:
+            try:
+                cached = redis.get(f"{STORE_CACHE_KEY}:stale")
+                if cached:
+                    payload = json.loads(cached)
+                    age = max(0, int((datetime.now(UTC) - datetime.fromisoformat(payload["fetched_at"])).total_seconds()))
+                    return payload["stores"], "cached", age
+            except (RedisError, json.JSONDecodeError, KeyError, ValueError):
+                pass
+        return [], "unavailable", None
+
+
 def fetch_store_signals(geometry: MultiPolygon, settings: Settings | None = None) -> StoreSnapshot:
     settings = settings or get_settings()
     fetched_at = datetime.now(UTC)
-    stores: list[dict[str, Any]] = []
-    source = "Bundled Savomart demo store locations"
-    kind = "demo"
-    limitations = "Demo locations are illustrative and are not claims about current operational stores."
-    if settings.store_service_url and settings.store_service_token:
-        try:
-            response = httpx.get(
-                settings.store_service_url,
-                headers={"X-cron-token": settings.store_service_token}, timeout=12,
-            )
-            response.raise_for_status()
-            body = response.json()
-            rows = body if isinstance(body, list) else body.get("data", body.get("stores", []))
-            for row in rows:
-                lat = row.get("latitude", row.get("lat"))
-                lon = row.get("longitude", row.get("lng", row.get("lon")))
-                if lat is not None and lon is not None:
-                    stores.append({"name": row.get("name", "Savomart store"), "lat": float(lat), "lon": float(lon)})
-            source = "Savomart operational store service"
-            kind = "live"
-            limitations = "Operational status is provider-supplied; distance is straight-line, not travel time."
-        except (httpx.HTTPError, ValueError, json.JSONDecodeError):
-            stores = []
+    stores, kind, cache_age = _live_stores(settings)
+    source = "Savomart operational store service"
+    limitations = "Operational status is provider-supplied; distance is straight-line, not travel time."
+    if not stores:
+        stores, snapshot_at = _snapshot_stores(settings)
+        source = "Provided Savomart operational store snapshot"
+        kind = "snapshot"
+        limitations = "Provided operational snapshot; status may have changed since retrieval. Distance is straight-line."
+        if snapshot_at:
+            fetched_at = snapshot_at
     if not stores:
         stores = DEMO_STORES
+        source = "Bundled Savomart demo store locations"
+        kind = "demo"
+        limitations = "Demo locations are illustrative and are not claims about current operational stores."
     centroid = geometry.centroid
     distances = [_haversine_km(centroid.y, centroid.x, store["lat"], store["lon"]) for store in stores]
     nearby = sum(distance <= 5 for distance in distances)
     return StoreSnapshot(
         nearest_store_km=min(distances) if distances else None, nearby_store_count=nearby,
         fetched_at=fetched_at, source=source, evidence_kind=kind, limitations=limitations,
+        cache_age_seconds=cache_age,
     )
 
 

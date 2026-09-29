@@ -3,7 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AreaMap } from "./AreaMap";
 import {
   type AreaReport, type AreaSearchResult, type AreaSelection, type Comparison, type GeoJSONGeometry, type Job, type ReportSummary,
-  compareReports, createApproximateRadius, getJob, getReport, listReports, retryJob, searchAreas, startAnalysis
+  type StoreLocation, compareReports, createApproximateRadius, getJob, getReport, listReports, listStores, retryJob, searchAreas, startAnalysis
 } from "../services/m1";
 import { createAssignment, listAssignees, type Assignee } from "../services/m2";
 
@@ -22,12 +22,13 @@ export function M1Workspace() {
   const [job, setJob] = useState<Job | null>(null);
   const [report, setReport] = useState<AreaReport | null>(null);
   const [reports, setReports] = useState<ReportSummary[]>([]);
+  const [stores, setStores] = useState<StoreLocation[]>([]);
   const [compareId, setCompareId] = useState("");
   const [comparison, setComparison] = useState<Comparison | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refreshReports = () => listReports().then(setReports).catch(() => undefined);
-  useEffect(() => { void refreshReports(); }, []);
+  useEffect(() => { void refreshReports(); void listStores().then(setStores).catch(() => setStores([])); }, []);
 
   useEffect(() => {
     if (!job || job.status === "completed" || job.status === "failed") return;
@@ -154,8 +155,8 @@ export function M1Workspace() {
       </aside>
 
       <div className="map-report-panel">
-        <AreaMap geometry={mapGeometry} suggestions={report?.suggestions ?? []} cellMode={cellMode} onCellClick={addCell} />
-        {report ? <ReportView report={report} compareOptions={compareOptions} compareId={compareId} setCompareId={setCompareId} compare={compare} comparison={comparison} /> : <div className="map-caption"><strong>Real Chennai geography</strong><span>OpenStreetMap tiles and boundaries. Click cells only when cell selection is active.</span></div>}
+        <AreaMap geometry={mapGeometry} suggestions={report?.suggestions ?? []} stores={stores} cellMode={cellMode} onCellClick={addCell} />
+        {report ? <ReportView report={report} compareOptions={compareOptions} compareId={compareId} setCompareId={setCompareId} compare={compare} comparison={comparison} /> : <div className="map-caption"><strong>Real Chennai geography</strong><span>OpenStreetMap tiles and boundaries · {stores.length} operational SAVOmart snapshot pins.</span></div>}
       </div>
     </section>
   );
@@ -193,6 +194,6 @@ function AssignmentControl({ reportId, suggestionId }: { reportId: string; sugge
 
 function EvidenceLegend() { return <div className="evidence-legend" aria-label="Evidence legend"><span><i className="legend-dot geography" />Real geography</span><span><i className="legend-dot sourced" />Real sourced data</span><span><i className="legend-dot proxy" />Proxy data</span><span><i className="legend-dot demo" />Demo/simulated</span></div>; }
 
-function metricLabel(kind: string, category: string) { if (kind === "demo") return "demo/simulated"; if (["homes", "businesses", "amenities", "mobility", "competition"].includes(category)) return "proxy data"; return kind === "live" || kind === "cached" ? "real sourced data" : kind; }
+function metricLabel(kind: string, category: string) { if (kind === "demo") return "demo/simulated"; if (["homes", "businesses", "amenities", "mobility", "competition", "people"].includes(category)) return "proxy data"; return ["live", "cached", "snapshot"].includes(kind) ? "real sourced data" : kind; }
 
 function formatAge(seconds?: number | null) { if (seconds == null) return "unknown"; if (seconds < 60) return `${seconds}s`; if (seconds < 3600) return `${Math.floor(seconds / 60)}m`; return `${Math.floor(seconds / 3600)}h`; }

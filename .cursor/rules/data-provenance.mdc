@@ -1,0 +1,15 @@
+---
+description: Protect Savomart credentials and preserve truthful Chennai data provenance
+alwaysApply: true
+---
+
+# Data Source And Credential Rules
+
+- PostgreSQL/PostGIS remains the application source of truth; Redis is only a queue and short-lived external cache.
+- Never place store-service tokens in source, tests, fixtures, commands, logs, screenshots, documentation, or AI-session exports. Read the token only from `STORE_SERVICE_TOKEN` in an ignored environment file.
+- The operational store adapter must use HTTP `GET` with no request body. Frontend code must call only the sanitized SiteScout API and never the internal store service directly.
+- Treat `backend/data/savomart_operational_stores.json` as a dated provided snapshot. Preserve store code, operational status, source status, and retrieval time; do not silently label it live.
+- Treat `backend/data/gcc_ward_population_census_2011.csv` as a historical 2011 ward allocation. Join it only to verified GCC ward IDs and polygons.
+- Any population or household value interpolated to a selected area must be zero-weight, labelled `proxy`, state the 2011 vintage, and explain the uniform-within-ward assumption. Never present it as a current or exact locality count.
+- Keep OSM mapped-feature counts labelled as proxies. A real boundary or store pin does not make simulated business evidence real.
+- New source adapters must validate coordinate order, bounds, stable identifiers, timestamps, source URLs, and geometry before persistence.
