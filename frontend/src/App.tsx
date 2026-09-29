@@ -6,6 +6,9 @@ import { M1Workspace } from "./components/M1Workspace";
 import { ExecutiveWorkspace } from "./components/ExecutiveWorkspace";
 import { ManagerPipeline } from "./components/ManagerPipeline";
 import { setDemoIdentity } from "./services/api";
+import { CatchmentRequestPanel } from "./components/CatchmentRequestPanel";
+import { SurveyManagerWorkspace } from "./components/SurveyManagerWorkspace";
+import { SurveyExecutiveWorkspace } from "./components/SurveyExecutiveWorkspace";
 
 export function App() {
   const [activeRole, setActiveRole] = useState<RoleId>(() => {
@@ -29,7 +32,7 @@ export function App() {
   function changeRole(role: RoleId) {
     setDemoIdentity({
       role,
-      userId: role === "bd-manager" ? "bd-manager-1" : role === "bd-executive" ? "bd-executive-1" : role
+      userId: role === "bd-manager" ? "bd-manager-1" : role === "bd-executive" ? "bd-executive-1" : role === "survey-manager" ? "survey-manager-1" : "survey-executive-1"
     });
     setActiveRole(role);
   }
@@ -58,9 +61,10 @@ export function App() {
       </section>
 
       <RoleShell activeRole={activeRole} onRoleChange={changeRole} />
-      {activeRole === "bd-manager" ? <><M1Workspace /><ManagerPipeline /></> : null}
+      {activeRole === "bd-manager" ? <><M1Workspace /><ManagerPipeline /><CatchmentRequestPanel /></> : null}
       {activeRole === "bd-executive" ? <ExecutiveWorkspace /> : null}
-      {activeRole === "survey-manager" || activeRole === "survey-executive" ? <section className="role-placeholder"><h2>M3 is not active yet</h2><p>Catchment survey operations remain the next milestone.</p></section> : null}
+      {activeRole === "survey-manager" ? <SurveyManagerWorkspace /> : null}
+      {activeRole === "survey-executive" ? <SurveyExecutiveWorkspace /> : null}
     </main>
   );
 }

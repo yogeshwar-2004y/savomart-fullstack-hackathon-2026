@@ -227,6 +227,86 @@ class PropertyStageTransition(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class CatchmentStudy(Base):
+    __tablename__ = "catchment_studies"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    property_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("properties.id"), index=True)
+    area_report_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("area_reports.id"), index=True)
+    target_type: Mapped[str] = mapped_column(String(24))
+    target_label: Mapped[str] = mapped_column(String(200))
+    target_geometry = mapped_column(Geometry("MULTIPOLYGON", srid=4326, spatial_index=False), nullable=False)
+    survey_geometry = mapped_column(Geometry("MULTIPOLYGON", srid=4326, spatial_index=False), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="requested", index=True)
+    requested_by_id: Mapped[str] = mapped_column(String(64))
+    requested_by_name: Mapped[str] = mapped_column(String(120))
+    source_study_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("catchment_studies.id"))
+    reuse_coverage: Mapped[float] = mapped_column(Float, default=0)
+    reuse_age_days: Mapped[float | None] = mapped_column(Float)
+    reuse_max_age_days: Mapped[int] = mapped_column(Integer)
+    reuse_min_coverage: Mapped[float] = mapped_column(Float)
+    summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    property: Mapped[Property | None] = relationship()
+    area_report: Mapped[AreaReport | None] = relationship()
+    source_study: Mapped["CatchmentStudy | None"] = relationship(remote_side="CatchmentStudy.id")
+    zones: Mapped[list["SurveyZone"]] = relationship(
+        back_populates="study", cascade="all, delete-orphan", order_by="SurveyZone.label"
+    )
+
+
+class SurveyZone(Base):
+    __tablename__ = "survey_zones"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    study_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("catchment_studies.id", ondelete="CASCADE"), index=True
+    )
+    label: Mapped[str] = mapped_column(String(120))
+    geometry = mapped_column(Geometry("MULTIPOLYGON", srid=4326, spatial_index=False), nullable=False)
+    assignee_id: Mapped[str] = mapped_column(String(64), index=True)
+    assignee_name: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(24), default="assigned", index=True)
+    mismatch_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    study: Mapped[CatchmentStudy] = relationship(back_populates="zones")
+    submissions: Mapped[list["LaneCapture"]] = relationship(
+        cascade="all, delete-orphan", order_by="LaneCapture.observed_at"
+    )
+
+
+class LaneCapture(Base):
+    __tablename__ = "lane_captures"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    zone_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("survey_zones.id", ondelete="CASCADE"), index=True
+    )
+    study_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("catchment_studies.id", ondelete="CASCADE"), index=True
+    )
+    client_submission_id: Mapped[uuid.UUID] = mapped_column(Uuid, unique=True, index=True)
+    submitted_by_id: Mapped[str] = mapped_column(String(64), index=True)
+    submitted_by_name: Mapped[str] = mapped_column(String(120))
+    lane_name: Mapped[str] = mapped_column(String(160))
+    location = mapped_column(Geometry("POINT", srid=4326, spatial_index=False), nullable=False)
+    gps_accuracy_m: Mapped[float] = mapped_column(Float)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    residential_units: Mapped[int] = mapped_column(Integer)
+    commercial_units: Mapped[int] = mapped_column(Integer)
+    pedestrian_activity: Mapped[int] = mapped_column(Integer)
+    vehicle_activity: Mapped[int] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(24), default="submitted")
+    evidence_kind: Mapped[str] = mapped_column(String(24), default="field-survey")
+    location_mismatch: Mapped[bool] = mapped_column(Boolean, default=False)
+    mismatch_distance_m: Mapped[float] = mapped_column(Float, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    zone: Mapped[SurveyZone] = relationship(back_populates="submissions")
+
+
 class ExternalDataSnapshot(Base):
     __tablename__ = "external_data_snapshots"
 

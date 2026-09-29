@@ -1,8 +1,6 @@
 # Savo SiteScout
 
-Savo SiteScout is a Chennai expansion workspace for Savomart. This repository implements **M1: Area Intelligence** and **M2: Property Scouting and Evaluation**. A BD Manager can turn an M1 scouting hotspot into an executive assignment, receive a field-captured property and deterministic evaluation, then move it through an audited review pipeline.
-
-M3 catchment operations are intentionally not implemented yet.
+Savo SiteScout is a Chennai expansion workspace for Savomart. This repository implements the complete **M1 Area Intelligence → M2 Property Scouting → M3 Catchment Study** loop. A BD Manager can carry a real Chennai area from virtual analysis through property scouting, field-survey operations, versioned evaluation, and an audited decision.
 
 ## Local startup
 
@@ -18,6 +16,8 @@ Open `http://localhost:5173`, keep the demo role set to **BD Manager**, submit a
 
 For M2, open a saved report and use **Assign** beside a suggested scouting location. Switch to **BD Executive**, open the assignment, correct the map pin, fill the property form, and select **Save and evaluate**. Switch back to **BD Manager** to inspect the property in the pipeline and record a stage decision.
 
+For M3, move a property to `survey_requested`, then use **Request field evidence** as BD Manager. Switch to **Survey Manager** to inspect the target and reuse coverage on the Chennai map, choose 1-8 zones, and assign survey executives. Switch to **Survey Executive** to submit lane observations and complete each zone. The final zone creates a catchment summary, appends a property evaluation version, and returns that property to `under_review`.
+
 Useful checks:
 
 ```bash
@@ -26,6 +26,7 @@ curl "http://localhost:8000/api/v1/areas/search?q=Velachery&method=locality"
 docker compose logs -f worker
 backend/.venv/bin/python backend/scripts/verify_m1_flow.py
 backend/.venv/bin/python backend/scripts/verify_m2_flow.py
+backend/.venv/bin/python backend/scripts/verify_m3_flow.py
 ```
 
 Stop with `docker compose down`. Data volumes are retained. Use `docker compose down -v` only when you deliberately want to erase the local database and Redis data.
@@ -41,7 +42,7 @@ Stop with `docker compose down`. Data volumes are retained. Use `docker compose 
 - Reports, metric provenance, suggestions, source snapshots, and geometry are saved in PostgreSQL/PostGIS. Redis is only the queue and short-lived external-response cache.
 - Saved reports can be reopened and compared. “Why this score?” exposes raw values, normalization, weight, contribution, source, fetch time, geography, evidence kind, cache age, and limitations.
 
-M2 demo requests require both `X-Demo-Role` and `X-Demo-User-Id`. The bundled identities are manager `bd-manager-1` and executives `bd-executive-1` / `bd-executive-2`. The backend enforces manager-only actions and executive assignment ownership; this remains lightweight hackathon identity, not production authentication.
+Role-scoped requests require both `X-Demo-Role` and `X-Demo-User-Id`. Bundled identities are BD Manager `bd-manager-1`, BD Executives `bd-executive-1` / `bd-executive-2`, Survey Manager `survey-manager-1`, and Survey Executives `survey-executive-1` / `survey-executive-2`. The backend enforces role and assignment ownership; this remains lightweight hackathon identity, not production authentication.
 
 ## M2 flow
 
@@ -53,7 +54,22 @@ M2 demo requests require both `X-Demo-Role` and `X-Demo-User-Id`. The bundled id
 - PostGIS checks the property against the assigned M1 area, measures straight-line distance from the hotspot, and searches for a possible duplicate within 75 m. These checks create manager-review flags rather than silently rejecting legitimate field corrections.
 - Property evaluation combines field inputs with OpenStreetMap features within 750 m and the configured Savomart store adapter. OSM or store fallback data retains the same live, cached, proxy, and demo labels used by M1.
 - Evaluation rows are append-only and uniquely versioned per property. M2 creates version 1; the schema is ready for M3 to append version 2 without overwriting the original decision evidence, but M2 does not create later versions itself.
-- Manager stages are `scouted`, `shortlisted`, `survey_requested`, `under_review`, `approved`, and `rejected`. Only documented transitions are accepted with `409` for an illegal move, and each accepted change stores actor, time, previous stage, next stage, and reason. `survey_requested` is the persisted M2 handoff point; no M3 survey is created yet.
+- Manager stages are `scouted`, `shortlisted`, `survey_requested`, `under_review`, `approved`, and `rejected`. Only documented transitions are accepted with `409` for an illegal move, and each accepted change stores actor, time, previous stage, next stage, and reason. `survey_requested` is the persisted handoff into an M3 request.
+
+## M3 flow
+
+- A BD Manager requests a catchment against a property or saved M1 area report. Property targets use a configurable 1 km PostGIS radius; area targets retain the saved M1 polygon.
+- Before work is created, PostGIS finds completed studies intersecting the target. A study no more than **90 days** old and covering at least **80%** of the target is reused immediately. The new record links its source study, age, coverage, summary, and creates no survey zones.
+- Partial overlap below 80% is recorded and removed from `survey_geometry`; only the uncovered remainder is assigned. Both thresholds are configurable with `CATCHMENT_REUSE_MAX_AGE_DAYS` and `CATCHMENT_REUSE_MIN_COVERAGE`.
+- The Survey Manager reviews target, remaining geometry, reuse provenance, zones, assignments, and progress on OpenStreetMap. The server partitions the remaining polygon into 1-8 clipped, non-overlapping longitudinal work zones and assigns them round-robin to selected executives.
+- Survey Executives capture lane/street, point location, GPS accuracy, observation time, residential and commercial unit counts, pedestrian and vehicle activity ratings, and notes. Points outside a zone by more than the greater of reported GPS accuracy or 100 m are retained but flagged for manager review.
+- Every lane submission carries a browser-generated UUID. Retrying the same UUID returns the original record rather than creating a duplicate. Executives receive `404` for another executive's zone.
+- Incomplete forms autosave to browser `localStorage` per zone, including the submission UUID and corrected map point. Refresh restores the draft. Submitted drafts are removed; this is lightweight recovery, not an offline synchronization engine.
+- Completing every zone aggregates timestamped counts, ratings, spatial coverage, mismatch count, source, and limitations. For a property, the system appends evaluation version N+1 and moves `survey_requested` to `under_review` with an audit transition.
+
+## Catchment scoring rules
+
+The catchment ruleset is `property-fitness-v2-catchment`. It scales the previous property's metric weights and contributions to 90%, then adds a 10% field-observed catchment metric. That metric combines residential units per observation (40%), commercial units per observation (25%), pedestrian activity (20%), and vehicle activity (15%), with each component capped at 1. Scripted walkthrough observations are stored and displayed as `demo`; user submissions are `field-survey`. Counts are observations, not census population, household totals, income, or continuous footfall.
 
 ## Property scoring rules
 
@@ -110,7 +126,7 @@ If store data is unavailable, coverage gap uses a documented neutral normalized 
 - `postgres`: PostgreSQL 16/PostGIS is authoritative for area geometry, job progress, reports, evidence, and source snapshots.
 - `redis`: RQ queue plus bounded external-data cache.
 
-Core M1 tables are `areas`, `area_analyses`, `analysis_jobs`, `area_reports`, `area_metric_evidence`, `scouting_suggestions`, and `external_data_snapshots`. M2 adds `scout_assignments`, `properties`, `property_photos`, `property_evaluations`, and `property_stage_transitions`. Area polygons, assignment targets, suggestions, and property locations use SRID 4326 with GiST spatial indexes. See [ARCHITECTURE.md](ARCHITECTURE.md) and [Decisions.md](Decisions.md) for the agreed M1-M3 direction.
+Core M1 tables are `areas`, `area_analyses`, `analysis_jobs`, `area_reports`, `area_metric_evidence`, `scouting_suggestions`, and `external_data_snapshots`. M2 adds `scout_assignments`, `properties`, `property_photos`, `property_evaluations`, and `property_stage_transitions`. M3 adds `catchment_studies`, `survey_zones`, and `lane_captures`. Area, catchment, zone, assignment, suggestion, property, and lane geometries use SRID 4326 with GiST spatial indexes. See [ARCHITECTURE.md](ARCHITECTURE.md) and [Decisions.md](Decisions.md) for the agreed design.
 
 ## Development checks
 
@@ -139,7 +155,10 @@ npm audit
 - No approved Census/OGD demographic dataset has been normalized to the selected boundary yet, so people metrics are unavailable and excluded from scoring.
 - Demo role switching is not production authentication. Property photos use local/Docker-volume storage rather than production object storage, distances are straight-line rather than routed, and field details are not independently verified.
 - M2 performs evaluation during property submission, so a slow public Overpass request can delay the save; the configured cache and labeled demo fallback keep the hackathon walkthrough available. A production deployment should move enrichment to a durable job.
-- M3, advanced cannibalisation, PDF export, full offline sync, and a conversational analyst remain out of scope.
+- M3 uses straight longitudinal polygon strips clipped to the target rather than road-network workload balancing. Managers cannot manually redraw vertices in this version.
+- Draft recovery is device-local. It does not sync drafts across devices, merge conflicts, cache map tiles, or upload photos offline.
+- Completed zones require at least one observation, but this version does not impose a statistically representative lane sample size. Managers must inspect coverage and limitations.
+- Advanced cannibalisation, OSRM routing, PDF export, full offline sync, and a conversational analyst remain out of scope.
 
 ## AI usage
 

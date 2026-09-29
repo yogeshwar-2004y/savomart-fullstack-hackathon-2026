@@ -15,6 +15,9 @@ DEMO_USERS = {
     "bd-manager-1": Principal("bd-manager-1", "Meera Raman", "bd-manager"),
     "bd-executive-1": Principal("bd-executive-1", "Arun Kumar", "bd-executive"),
     "bd-executive-2": Principal("bd-executive-2", "Kavya Selvan", "bd-executive"),
+    "survey-manager-1": Principal("survey-manager-1", "Priya Natarajan", "survey-manager"),
+    "survey-executive-1": Principal("survey-executive-1", "Dinesh Ravi", "survey-executive"),
+    "survey-executive-2": Principal("survey-executive-2", "Nila Krishnan", "survey-executive"),
 }
 
 
@@ -58,4 +61,20 @@ def require_executive_principal(
 ) -> Principal:
     if principal.role != "bd-executive":
         raise HTTPException(status_code=403, detail="BD Executive role required")
+    return principal
+
+
+def require_survey_manager_principal(
+    principal: Annotated[Principal, Depends(get_authenticated_principal)],
+) -> Principal:
+    if principal.role != "survey-manager":
+        raise HTTPException(status_code=403, detail="Survey Manager role required")
+    return principal
+
+
+def require_survey_executive_principal(
+    principal: Annotated[Principal, Depends(get_authenticated_principal)],
+) -> Principal:
+    if principal.role != "survey-executive":
+        raise HTTPException(status_code=403, detail="Survey Executive role required")
     return principal

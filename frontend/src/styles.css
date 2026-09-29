@@ -1019,6 +1019,50 @@ button:disabled {
   margin-top: 8px;
 }
 
+.m3-workspace {
+  margin: 0 auto;
+  max-width: 1440px;
+  padding: 26px 28px;
+}
+
+.catchment-request-panel { border-top: 1px solid #e8ddeb; }
+.request-row { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) auto; margin-top: 16px; }
+.request-row select { min-height: 44px; }
+.study-summary-list { display: grid; gap: 8px; margin-top: 14px; }
+.study-summary-list > div { align-items: center; background: #fff; border: 1px solid #e3d6e7; border-radius: 6px; display: grid; gap: 7px; grid-template-columns: auto minmax(0, 1fr) auto; padding: 12px; }
+.study-summary-list small { color: #725d79; }
+
+.survey-manager-layout { align-items: start; display: grid; gap: 16px; grid-template-columns: 280px minmax(0, 1fr); margin-top: 16px; }
+.study-list { display: grid; gap: 8px; }
+.study-list button { background: #fff; border: 1px solid #e3d6e7; border-radius: 6px; color: #32103d; display: grid; gap: 7px; padding: 13px; text-align: left; }
+.study-list button.active { border-color: #782b90; box-shadow: inset 3px 0 #782b90; }
+.study-list small { color: #725d79; }
+.study-detail { background: #fff; border: 1px solid #e3d6e7; border-radius: 8px; display: grid; gap: 16px; min-width: 0; padding: 18px; }
+.study-detail > header { align-items: start; display: flex; justify-content: space-between; }
+.study-detail > header > strong { background: #fff200; border-radius: 6px; font-size: 26px; padding: 10px; }
+.catchment-map { border: 1px solid #e3d6e7; border-radius: 6px; height: 380px; width: 100%; }
+.reuse-note { background: #f7f4f8; border-left: 4px solid #782b90; display: grid; gap: 5px; padding: 12px; }
+.reuse-note small { color: #725d79; }
+.zone-planner { align-items: end; border-bottom: 1px solid #e8ddeb; border-top: 1px solid #e8ddeb; display: grid; gap: 14px; grid-template-columns: 120px minmax(220px, 1fr) auto; padding: 14px 0; }
+.zone-planner label { display: grid; gap: 5px; }
+.zone-planner fieldset { border: 0; display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 0; padding: 0; }
+.zone-planner legend { align-items: center; display: flex; font-size: 13px; font-weight: 800; gap: 5px; margin-bottom: 7px; }
+.zone-planner fieldset label { align-items: center; display: flex; font-size: 13px; }
+.zone-planner fieldset input { min-height: 18px; width: 18px; }
+.zone-progress-list { display: grid; gap: 8px; }
+.zone-progress-list > div { align-items: center; border-bottom: 1px solid #eee7f0; display: grid; gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; padding: 10px 0; }
+.zone-progress-list small { color: #725d79; }
+.zone-progress-list b { color: #9a4a00; font-size: 12px; }
+.catchment-summary { background: #f7f4f8; padding: 14px; }
+.catchment-summary > div { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 12px 0; }
+.catchment-summary span { background: #fff; display: grid; gap: 4px; padding: 10px; }
+.catchment-summary small, .catchment-summary p { color: #725d79; }
+.lane-form .catchment-map { height: 320px; }
+.lane-actions { display: flex; gap: 10px; }
+.stage-chip.requested, .stage-chip.assigned { background: #eee3f1; color: #601d74; }
+.stage-chip.in_progress { background: #fff5c2; color: #705d00; }
+.stage-chip.completed, .stage-chip.reused { background: #e5f5ee; color: #126449; }
+
 .workspace p:not(.eyebrow) {
   color: #664b70;
   margin-top: 10px;
@@ -1108,7 +1152,10 @@ button:disabled {
   .pipeline-layout,
   .review-grid,
   .decision-summary,
-  .form-grid {
+  .form-grid,
+  .survey-manager-layout,
+  .zone-planner,
+  .catchment-summary > div {
     grid-template-columns: 1fr;
   }
 
@@ -1135,4 +1182,9 @@ button:disabled {
   .property-review { padding: 14px; }
   .property-score { min-width: 100%; }
   .photo-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .m3-workspace { padding-left: 12px; padding-right: 12px; }
+  .request-row { grid-template-columns: 1fr; }
+  .study-summary-list > div, .zone-progress-list > div { align-items: start; grid-template-columns: 1fr; }
+  .catchment-map { height: 340px; }
+  .lane-actions { align-items: stretch; flex-direction: column; }
 }

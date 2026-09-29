@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     property_nearby_radius_m: int = 750
     property_duplicate_radius_m: int = 75
     property_assignment_distance_m: int = 3000
+    catchment_radius_m: int = 1000
+    catchment_reuse_max_age_days: int = 90
+    catchment_reuse_min_coverage: float = 0.80
+    survey_location_tolerance_m: int = 100
     rq_sync: bool = False
     cors_origins_raw: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",
