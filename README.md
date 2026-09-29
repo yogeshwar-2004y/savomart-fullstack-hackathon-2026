@@ -56,7 +56,7 @@ Role-scoped requests require both `X-Demo-Role` and `X-Demo-User-Id`. Bundled id
 - An assignment accepts one property capture. A repeat submission returns `409`; an executive accessing another executive's assignment or property receives `404` so object existence is not disclosed.
 - PostGIS checks the property against the assigned M1 area, measures straight-line distance from the hotspot, and searches for a possible duplicate within 75 m. These checks create manager-review flags rather than silently rejecting legitimate field corrections.
 - Property evaluation combines field inputs with OpenStreetMap features within 750 m and the configured Savomart store adapter. OSM or store fallback data retains the same live, cached, proxy, and demo labels used by M1.
-- Evaluation rows are append-only and uniquely versioned per property. M2 creates version 1; the schema is ready for M3 to append version 2 without overwriting the original decision evidence, but M2 does not create later versions itself.
+- Evaluation rows are append-only and uniquely versioned per property. M2 creates version 1; completed M3 field evidence appends version N+1 without overwriting prior evidence. The manager review exposes every version and shows the linked catchment contribution, source, timestamp, evidence label, and limitations on the affected version.
 - Manager stages are `scouted`, `shortlisted`, `survey_requested`, `under_review`, `approved`, and `rejected`. Only documented transitions are accepted with `409` for an illegal move, and each accepted change stores actor, time, previous stage, next stage, and reason. `survey_requested` is the persisted handoff into an M3 request.
 
 ## M3 flow
@@ -99,7 +99,7 @@ Scores are labeled Strong candidate (`>=70`), Promising (`>=55`), Needs review (
 - **OGD India / Department of Posts** is the preferred pincode-boundary source. Download `All India Pincode Boundary Geo JSON` from the [official OGD catalog](https://www.data.gov.in/catalog/all-india-pincode-boundary-geo-json), place the GeoJSON or GeoJSONL file in `backend/data/`, and set `OGD_PINCODE_BOUNDARIES_PATH=/app/data/<filename>`. The source is released under the Government Open Data License - India. The app does not silently substitute a geocoded point for a PIN polygon.
 - **Public Chennai pincode feature layer** provides configurable fallback coverage, including `600042`. It is labeled `third-party` and non-official because its publisher metadata does not establish Department of Posts authority. Set `CHENNAI_PINCODE_FEATURE_URL=` to disable it. A configured, matching OGD file always wins.
 - **OpenStreetMap Overpass API** supplies mapped buildings, shops, offices, amenities, transit features, and competitors inside the selected geometry. The worker filters bounding-box responses against the selected polygon.
-- **Savomart operational store service** is supported only when `STORE_SERVICE_URL` and `STORE_SERVICE_TOKEN` are supplied server-side in ignored `.env`. No credentials are committed or exposed to the browser.
+- **Savomart operational store service** is supported only when `STORE_SERVICE_URL` and `STORE_SERVICE_TOKEN` are supplied server-side in ignored `.env`. The adapter sends an HTTP `GET` with the token in the configured request header and no request body. No credentials are committed, logged, documented, or exposed to the browser.
 - **Bundled demo evidence** keeps the Velachery scoring walkthrough usable if Overpass or the store service is unavailable. It is labeled `demo/simulated` beside affected values. Bundled store points are illustrative, not current operational-store claims. There is no bundled demo geography fallback.
 - **Simulated signal fallback** keeps arbitrary map-cell workflows usable when Overpass and Redis cache are both unavailable. It uses fixed density baselines, is labeled `demo/simulated` on every affected metric, and explicitly says it is not an observation about the selected area. Set `ALLOW_SIMULATED_SIGNAL_FALLBACK=false` to make these jobs fail instead.
 - **Redis cache** keeps successful OSM responses for one hour and an eligible stale snapshot for seven days. If an upstream failure causes stale evidence to be used, the report is labeled `cached` and shows its age.
@@ -148,6 +148,12 @@ npm run build
 npm audit
 ```
 
+## Verification scope
+
+`backend/scripts/verify_full_workflow.py` creates an isolated Chennai map-cell analysis, uploads an actual in-memory JPEG with the property capture, completes a two-zone catchment study, retries the same lane-submission UUID, and verifies evaluation versions and decision history. It mutates the local development database and deliberately uses demo-labelled field observations. The two PostGIS verification scripts exercise metre-based property buffers and multi-study coverage-union reuse against the running database.
+
+The complete persona workflow has been verified locally through Docker Compose and the browser at `http://localhost:5173`. No deployed environment or production identity provider was tested. No LLM provider is configured or called at runtime; when AI is unavailable, saved deterministic evidence and rule-based explanations remain the entire scoring and explanation path.
+
 ## Current limitations
 
 - OSM locality boundaries reflect contributor coverage and may represent neighborhoods inconsistently. Nominatim point-only results require an explicitly approximate radius or map selection.
@@ -163,6 +169,7 @@ npm audit
 - Draft recovery is device-local. It does not sync drafts across devices, merge conflicts, cache map tiles, or upload photos offline.
 - Completed zones require at least one observation, but this version does not impose a statistically representative lane sample size. Managers must inspect coverage and limitations.
 - Advanced cannibalisation, OSRM routing, PDF export, full offline sync, and a conversational analyst remain out of scope.
+- The verification environment is local Docker Compose only. Production deployment, TLS, durable object storage, backup/restore, and external identity-provider integration have not been verified.
 
 ## AI usage
 

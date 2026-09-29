@@ -1,12 +1,14 @@
 """Run a fresh persisted M1 -> M2 -> M3 journey through the local API."""
 
+import io
 import json
 import sys
 from datetime import UTC, datetime
 from uuid import uuid4
 
 import httpx
-from shapely.geometry import shape
+from PIL import Image
+from shapely.geometry import box, shape
 
 BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000/api/v1"
 MANAGER = {"X-Demo-Role": "bd-manager", "X-Demo-User-Id": "bd-manager-1"}
@@ -22,10 +24,25 @@ def check(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
+def choose_uncovered_cell(client: httpx.Client) -> tuple[float, float]:
+    studies = client.get(f"{BASE_URL}/catchment-studies", headers=MANAGER).raise_for_status().json()
+    completed = [shape(item["target_geometry"]) for item in studies if item["status"] == "completed"]
+    candidates = (
+        (80.06, 12.76), (80.10, 12.76), (80.14, 12.76), (80.28, 12.76),
+        (80.32, 12.76), (80.06, 13.10), (80.32, 13.10), (80.06, 13.24),
+        (80.12, 13.24), (80.28, 13.24), (80.32, 13.24),
+    )
+    for west, south in candidates:
+        candidate = box(west, south, west + 0.01, south + 0.01)
+        if all(candidate.distance(geometry) > 0.025 for geometry in completed):
+            return west, south
+    raise RuntimeError("No isolated Chennai verification cell remains; reset demo volumes or add a candidate")
+
+
 def main() -> None:
     client = httpx.Client(timeout=45)
     marker = uuid4().hex[:10]
-    west, south = 80.276, 13.196
+    west, south = choose_uncovered_cell(client)
     ring = [
         [west, south], [west + 0.01, south], [west + 0.01, south + 0.01],
         [west, south + 0.01], [west, south],
@@ -84,12 +101,16 @@ def main() -> None:
         headers=OTHER_EXECUTIVE, data={"payload": json.dumps(capture)},
     )
     check(unauthorized.status_code == 404, "Another executive could submit a property")
+    image = io.BytesIO()
+    Image.new("RGB", (32, 24), "#FFF200").save(image, "JPEG")
     prop = client.post(
         f'{BASE_URL}/scout-assignments/{assignment["id"]}/properties',
         headers=EXECUTIVE, data={"payload": json.dumps(capture)},
+        files=[("photos", ("e2e-property.jpg", image.getvalue(), "image/jpeg"))],
     ).raise_for_status().json()
     check([item["version"] for item in prop["evaluations"]] == [1], "M2 did not persist evaluation v1")
     check(prop["evaluations"][0]["scoring_version"] == "property-fitness-v1", "M2 score version mismatch")
+    check(len(prop["photos"]) == 1, "M2 did not persist the validated property photo")
 
     for stage, reason in (
         ("shortlisted", "E2E verification shortlist"),
@@ -167,6 +188,7 @@ def main() -> None:
         "study_id": study["id"],
         "zone_count": len(planned["zones"]),
         "evaluation_versions": versions,
+        "property_photo_count": len(final["photos"]),
         "scores": [item["score"] for item in final["evaluations"]],
         "final_stage": final["stage"],
         "evidence_kind": completed_study["summary"]["evidence_kind"],

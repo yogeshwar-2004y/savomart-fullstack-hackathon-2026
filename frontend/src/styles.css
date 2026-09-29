@@ -968,6 +968,19 @@ button:disabled {
 .photo-loading { aspect-ratio: 4 / 3; background: #eee8f0; border-radius: 6px; object-fit: cover; width: 100%; }
 .photo-loading { align-items: center; display: flex; justify-content: center; }
 
+.evaluation-history { border-bottom: 1px solid #e8ddeb; border-top: 1px solid #e8ddeb; display: grid; gap: 12px; padding: 16px 0; }
+.evaluation-history h3 { margin-top: 3px; }
+.evaluation-history > div:last-child { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.evaluation-history button { background: #fff; border: 1px solid #dacbdf; border-radius: 6px; color: #32103d; display: grid; gap: 5px; padding: 12px; text-align: left; }
+.evaluation-history button.active { border-color: #782b90; box-shadow: inset 3px 0 #782b90; }
+.evaluation-history button span { align-items: center; display: flex; justify-content: space-between; }
+.evaluation-history button em { background: #fff200; border-radius: 3px; color: #32103d; font-size: 10px; font-style: normal; font-weight: 800; padding: 3px 5px; text-transform: uppercase; }
+.evaluation-history button > b { font-size: 24px; }
+.evaluation-history button small { color: #725d79; overflow-wrap: anywhere; }
+.catchment-evidence { background: #f5eff7; border-left: 4px solid #782b90; display: grid; gap: 7px; padding: 14px; }
+.catchment-evidence p,
+.catchment-evidence small { color: #654b6d; }
+
 .decision-summary { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .decision-summary > div { border-left: 4px solid #782b90; padding: 8px 12px; }
 .decision-summary h3 { font-size: 15px; margin: 0 0 7px; }
