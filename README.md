@@ -2,7 +2,49 @@
 
 Savo SiteScout is a Chennai expansion workspace for Savomart. This repository implements the complete **M1 Area Intelligence → M2 Property Scouting → M3 Catchment Study** loop. A BD Manager can carry a real Chennai area from virtual analysis through property scouting, field-survey operations, versioned evaluation, and an audited decision.
 
-The Azure hackathon demo is deployed at [savo-sitescout-yogesh-2026.southindia.cloudapp.azure.com](https://savo-sitescout-yogesh-2026.southindia.cloudapp.azure.com/). See the [Azure demo runbook](deploy/README.md) for access, operations, costs, and limitations. The shared demo login is an outer access gate, not production user authentication.
+## Open the deployed demo
+
+**URL:** [https://savo-sitescout-yogesh-2026.southindia.cloudapp.azure.com/](https://savo-sitescout-yogesh-2026.southindia.cloudapp.azure.com/)
+
+The browser asks for a username and password before showing the app. Use username `sitescout`; the password is stored only in the ignored local `.deploy/demo-password` file on the deploying machine. This **shared outer gate** keeps a publicly reachable hackathon VM from being completely open. It is necessary because the in-app role/user selector sends demo identity headers, **not** verified user credentials. Anyone with the shared password can switch between demo roles, so do not enter confidential production data. Replace both mechanisms with real per-user authentication before production. See the [Azure demo runbook](deploy/README.md) for operations and credit control.
+
+## Workflow at a glance
+
+```mermaid
+flowchart LR
+    A[BD Manager<br/>select Chennai area] --> B[M1 area analysis<br/>saved report + evidence]
+    B --> C[Assign hotspot<br/>to BD Executive]
+    C --> D[BD Executive<br/>GPS, details, photos]
+    D --> E[M2 property evaluation<br/>version 1]
+    E --> F[BD Manager<br/>review + request study]
+    F --> G[Survey Manager<br/>review reuse, plan zones]
+    G --> H[Survey Executive<br/>draft + lane observations]
+    H --> I[M3 catchment summary<br/>evaluation version 2]
+    I --> J[BD Manager<br/>compare evidence + decide]
+```
+
+| Role | Main work | Handoff |
+|---|---|---|
+| BD Manager | Select an area, inspect the M1 report, assign a hotspot, review the property pipeline and score history | Scouting assignment, then catchment request |
+| BD Executive | Open only assigned work, correct the GPS pin, capture property details and photos | Property and deterministic M2 evaluation |
+| Survey Manager | Review requests and reusable coverage, select suggested lanes, create non-overlapping zones, track progress | Assigned survey zones |
+| Survey Executive | Restore a local draft, record lane-level observations, submit and complete zones | Catchment summary and new evaluation version |
+
+The score is computed from versioned rules, not an LLM. Reports expose each metric's contribution, source, timestamp, geography, and limitations through **Why this score?**. Real Chennai geometry does not turn demo or simulated signals into real observations; the UI labels those separately.
+
+```mermaid
+flowchart TB
+    Browser[React browser<br/>four demo roles] -->|HTTPS| Caddy[Caddy<br/>shared demo access gate]
+    Caddy --> API[FastAPI<br/>roles, validation, spatial APIs]
+    API --> PG[(PostgreSQL + PostGIS<br/>authoritative jobs, geometry, reports)]
+    API --> Redis[(Redis<br/>queue + short-lived cache)]
+    Redis --> Worker[RQ worker<br/>fetch + deterministic scoring]
+    Worker --> PG
+    Worker --> Sources[OSM / configured public sources<br/>or clearly labelled cached/demo fallback]
+    API --> Photos[(Photo volume)]
+```
+
+The Azure demo runs these services on one VM. The API, worker, database, and Redis are not exposed as public ports; Caddy serves the frontend and proxies `/api`. Uploaded photos and database data persist on VM Docker volumes, without automated off-VM backups. See the [deployment runbook](deploy/README.md) for maintenance and cost controls.
 
 ## Local startup
 

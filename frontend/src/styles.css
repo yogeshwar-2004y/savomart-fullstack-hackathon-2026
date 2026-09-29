@@ -2753,11 +2753,10 @@ a.assignment-card:hover { box-shadow: var(--shadow-soft); transform: translateY(
   background: rgba(20, 12, 24, 0.15);
 }
 .notification-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 360px;
-  max-width: 90vw;
+  position: fixed;
+  max-height: calc(100dvh - 72px);
+  display: flex;
+  flex-direction: column;
   background: #ffffff;
   border: 1px solid #dfd0e5;
   border-radius: 12px;
@@ -2770,6 +2769,7 @@ a.assignment-card:hover { box-shadow: var(--shadow-soft); transform: translateY(
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 12px 14px;
   background: #fbf8fc;
   border-bottom: 1px solid #ebddef;
@@ -2778,6 +2778,8 @@ a.assignment-card:hover { box-shadow: var(--shadow-soft); transform: translateY(
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 .notification-header-title strong {
   font-size: 13px;
@@ -2795,6 +2797,7 @@ a.assignment-card:hover { box-shadow: var(--shadow-soft); transform: translateY(
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 .icon-text-btn {
   display: inline-flex;
@@ -2839,7 +2842,7 @@ a.assignment-card:hover { box-shadow: var(--shadow-soft); transform: translateY(
 .notification-items-list {
   display: flex;
   flex-direction: column;
-  max-height: 380px;
+  min-height: 0;
   overflow-y: auto;
 }
 .notification-item {
@@ -2897,10 +2900,13 @@ a.assignment-card:hover { box-shadow: var(--shadow-soft); transform: translateY(
 .notification-item-top strong {
   font-size: 12px;
   color: #27142d;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .notif-time {
   font-size: 10px;
   color: #8c7393;
+  flex-shrink: 0;
 }
 .notification-item-content p {
   font-size: 11px;
@@ -2909,13 +2915,12 @@ a.assignment-card:hover { box-shadow: var(--shadow-soft); transform: translateY(
   line-height: 1.35;
 }
 .unread-dot {
-  position: absolute;
-  top: 14px;
-  right: 12px;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: #782b90;
+  flex-shrink: 0;
+  align-self: center;
 }
 .notif-arrow {
   color: #baa8c1;
@@ -2938,6 +2943,10 @@ a.assignment-card:hover { box-shadow: var(--shadow-soft); transform: translateY(
 }
 .notification-empty small {
   font-size: 11px;
+}
+@media (max-width: 380px) {
+  .notification-popover-header { flex-wrap: wrap; }
+  .notification-header-actions { margin-left: auto; }
 }
 
 /* ============================================================
@@ -3633,4 +3642,3 @@ a.assignment-card:hover { box-shadow: var(--shadow-soft); transform: translateY(
     font-size: 9pt !important;
   }
 }
-

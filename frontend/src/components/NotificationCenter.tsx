@@ -13,7 +13,8 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { listReports, type ReportSummary } from "../services/m1";
 import { listAssignments, listProperties, type Assignment, type PropertyRecord } from "../services/m2";
@@ -37,6 +38,8 @@ interface NotificationCenterProps {
 
 export function NotificationCenter({ activeRole, currentUserId }: NotificationCenterProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const bellRef = useRef<HTMLButtonElement>(null);
+  const [panelPosition, setPanelPosition] = useState({ top: 0, left: 0, width: 360 });
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [readIds, setReadIds] = useState<string[]>(() => {
     try {
@@ -244,13 +247,50 @@ export function NotificationCenter({ activeRole, currentUserId }: NotificationCe
     return notifications;
   }, [notifications, filter, readIds]);
 
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+
+    function positionPanel() {
+      const bell = bellRef.current;
+      if (!bell) return;
+      const rect = bell.getBoundingClientRect();
+      const width = Math.min(360, window.innerWidth - 24);
+      const besideSidebar = window.innerWidth > 820 && bell.closest(".app-sidebar");
+      const preferredLeft = besideSidebar ? rect.right + 12 : rect.right - width;
+      setPanelPosition({
+        top: Math.min(rect.bottom + 8, window.innerHeight - 48),
+        left: Math.max(12, Math.min(preferredLeft, window.innerWidth - width - 12)),
+        width,
+      });
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+        bellRef.current?.focus();
+      }
+    }
+
+    positionPanel();
+    window.addEventListener("resize", positionPanel);
+    window.addEventListener("scroll", positionPanel, true);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("resize", positionPanel);
+      window.removeEventListener("scroll", positionPanel, true);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isOpen]);
+
   return (
     <div className="notification-center-wrap">
       <button
+        ref={bellRef}
         type="button"
         className={`notification-bell-btn ${unreadCount > 0 ? "has-unread" : ""}`}
         onClick={() => setIsOpen((prev) => !prev)}
         aria-label={`Notifications (${unreadCount} unread)`}
+        aria-expanded={isOpen}
         title={`Notifications (${unreadCount} unread)`}
       >
         <Bell size={18} />
@@ -259,10 +299,10 @@ export function NotificationCenter({ activeRole, currentUserId }: NotificationCe
         ) : null}
       </button>
 
-      {isOpen ? (
+      {isOpen ? createPortal(
         <>
           <div className="notification-backdrop" onClick={() => setIsOpen(false)} />
-          <div className="notification-popover" role="dialog" aria-label="Activity Feed">
+          <div className="notification-popover" role="dialog" aria-label="Activity Feed" style={panelPosition}>
             <div className="notification-popover-header">
               <div className="notification-header-title">
                 <strong>Activity Feed & Alerts</strong>
@@ -352,7 +392,8 @@ export function NotificationCenter({ activeRole, currentUserId }: NotificationCe
               )}
             </div>
           </div>
-        </>
+        </>,
+        document.body
       ) : null}
     </div>
   );
