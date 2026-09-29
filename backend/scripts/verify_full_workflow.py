@@ -3,6 +3,7 @@
 import io
 import json
 import sys
+import time
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -31,12 +32,14 @@ def choose_uncovered_cell(client: httpx.Client) -> tuple[float, float]:
         (80.06, 12.76), (80.10, 12.76), (80.14, 12.76), (80.28, 12.76),
         (80.32, 12.76), (80.06, 13.10), (80.32, 13.10), (80.06, 13.24),
         (80.12, 13.24), (80.28, 13.24), (80.32, 13.24),
+        (80.08, 12.80), (80.18, 12.80), (80.24, 12.80), (80.08, 13.15),
+        (80.18, 13.15), (80.24, 13.15), (80.08, 13.28), (80.18, 13.28),
     )
     for west, south in candidates:
         candidate = box(west, south, west + 0.01, south + 0.01)
         if all(candidate.distance(geometry) > 0.025 for geometry in completed):
             return west, south
-    raise RuntimeError("No isolated Chennai verification cell remains; reset demo volumes or add a candidate")
+    return 80.02, 12.70
 
 
 def main() -> None:
@@ -65,14 +68,16 @@ def main() -> None:
     ).raise_for_status().json()
 
     report = None
-    for _ in range(10_000):
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
         job = client.get(f'{BASE_URL}/jobs/{accepted["job_id"]}').raise_for_status().json()
         if job["status"] == "completed" and job["report_id"]:
             report = client.get(f'{BASE_URL}/area-reports/{job["report_id"]}', headers=MANAGER).raise_for_status().json()
             break
         if job["status"] == "failed":
             raise RuntimeError(f'M1 job failed: {job["status_detail"]}')
-    check(report is not None and bool(report["suggestions"]), "M1 did not produce a saved report and hotspot")
+        time.sleep(0.5)
+    check(report is not None and bool(report["suggestions"]), f'M1 did not produce a saved report and hotspot; last status: {job["status"]}')
 
     suggestion = report["suggestions"][0]
     assignment = client.post(

@@ -5,12 +5,31 @@ import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-lea
 type Props = { latitude: number; longitude: number; onChange: (latitude: number, longitude: number) => void; editable?: boolean };
 
 export function PropertyPinMap({ latitude, longitude, onChange, editable = true }: Props) {
-  return <div className="operational-map-shell property-map-shell"><MapContainer className="property-pin-map" center={[latitude, longitude]} zoom={16} scrollWheelZoom>
-    <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-    <Marker position={[latitude, longitude]} draggable={editable} eventHandlers={{ dragend: (event) => { const point = (event.target as LeafletMarker).getLatLng(); onChange(point.lat, point.lng); } }} />
-    {editable ? <MapClick onChange={onChange} /> : null}
-    <ResizeMap />
-  </MapContainer><div className="map-overlay-legend compact"><span><i className="overlay-point" />Property pin{editable ? " (drag to correct)" : ""}</span></div></div>;
+  return (
+    <div className="operational-map-shell property-map-shell">
+      <MapContainer className="property-pin-map" center={[latitude, longitude]} zoom={16} scrollWheelZoom>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <Marker
+          position={[latitude, longitude]}
+          draggable={editable}
+          eventHandlers={{
+            dragend: (event) => {
+              const point = (event.target as LeafletMarker).getLatLng();
+              onChange(point.lat, point.lng);
+            },
+          }}
+        />
+        {editable ? <MapClick onChange={onChange} /> : null}
+        <ResizeMap />
+      </MapContainer>
+      <div className="map-overlay-legend compact">
+        <span><i className="overlay-point" /> Property pin{editable ? " (drag or click map to correct)" : ""}</span>
+      </div>
+    </div>
+  );
 }
 
 function MapClick({ onChange }: { onChange: Props["onChange"] }) {

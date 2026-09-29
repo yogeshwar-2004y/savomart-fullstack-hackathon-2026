@@ -19,16 +19,34 @@ For M2, open a saved report and use **Assign** beside a suggested scouting locat
 
 For M3, move a property to `survey_requested`, then use **Request field evidence** as BD Manager. Switch to **Survey Manager** to inspect the target and reuse coverage on the Chennai map, review any suggested mapped lanes, choose 1-8 zones, and assign survey executives. Switch to **Survey Executive** to restore a local draft, submit lane observations, and complete each zone. The final zone creates a catchment summary, appends a property evaluation version, and returns that property to `under_review`.
 
-### Workspace navigation
+### Workspace navigation and entry experience
 
-The sidebar demo role/user selector uses the seeded identities and sends the selected identity headers on API requests; it is not production authentication. Routes support direct links, refresh, and browser back/forward. The dashboard for each role shows counts and item links from the API, with loading, empty, and failure states. The sidebar collapses on desktop and becomes a drawer on phone widths. The UI uses short interaction animations and disables them under `prefers-reduced-motion`.
+Savo SiteScout features a modern, accessible operations workspace inspired by responsive consumer applications, customized with SAVOmart purple (`#782B90`), yellow (`#FFF200`), and a crisp white/light map palette:
+- **Shareable Leadership Decision Pack**: One-click printable executive dossier (`window.print()` / PDF export) summarizing property specifications, score evolution (v1 physical vs v2 catchment ground truth), value drivers, risk flags, metric provenance, audited stage history, and a formal Retail Expansion Committee sign-off section with contingency checklists.
+- **Persona Notifications & Live Activity Feed**: Built-in notification center in the header and sidebar tracking unread operational alerts tailored to the active persona (e.g. BD Manager final review alerts, BD Executive scouting dispatches, Survey Manager catchment requests, and Survey Executive zone drafts).
+- **Streamlined Role Selection Dropdown**: An elegant, fast dropdown in the sidebar and mobile header displays all 4 operational roles with their core responsibilities and demo user identities (BD Manager, BD Executive, Survey Manager, Survey Executive).
+- **SAVOmart Purple & White Map Palette**: Interactive maps render with a muted light tile canvas making SAVOmart purple (`#782B90`) boundaries, yellow highlights, purple store pins, and emerald survey zones pop with high contrast.
+- **Entry Onboarding & Welcome Experience**: An overview introduces the platform, identifies the active role and attention queue, and offers a **Continue to workspace** action (persisted per session, with full `prefers-reduced-motion` support).
+- **Adaptive Sidebar**: Smooth toggle, grouped navigation, escape key listener, mobile drawer scrim, and a collapsed state with tooltips.
+- **Dynamic "What should I do next?" Action Queue**: Each role workspace analyzes real backend state and presents immediate, prioritized next steps with deep links and a 4-stage lifecycle tracker.
+- **Pipeline Stage Guide & Filters**: The BD Manager pipeline provides an interactive filter bar with live counts and an expandable guide defining all lifecycle stages.
 
-| Role | Destinations |
+| Role | Primary Destinations |
 |---|---|
-| BD Manager | `/manager/areas`, `/manager/reports`, `/manager/assignments`, `/manager/properties`, `/manager/catchments`, `/manager/decisions` |
-| BD Executive | `/executive/assignments` for open work; `/executive/submitted` for saved properties and evaluations |
-| Survey Manager | `/survey-manager/requests`, `/survey-manager/progress`, `/survey-manager/results` and direct study details |
-| Survey Executive | `/survey-executive/zones` for assigned work; `/survey-executive/drafts` for entered local drafts |
+| **BD Manager** | `/manager/areas` (Area Intelligence), `/manager/reports` (Saved Reports), `/manager/assignments` (Dispatch Scout), `/manager/properties` (Property Pipeline), `/manager/catchments` (Catchment Evidence), `/manager/decisions` (Governance & Audit) |
+| **BD Executive** | `/executive/assignments` (My Scouting Assignments), `/executive/submitted` (Properties Submitted) |
+| **Survey Manager** | `/survey-manager/requests` (Requests Needing Action), `/survey-manager/progress` (Studies in Progress), `/survey-manager/results` (Completed & Reused Catchments) |
+| **Survey Executive** | `/survey-executive/zones` (Assigned Zones), `/survey-executive/drafts` (Local Drafts to Restore) |
+
+### Property Pipeline Stage Definitions
+
+The BD Manager property pipeline enforces a deterministic state machine with complete audit history:
+- **Scouted**: A BD Executive has submitted field observations, verified the GPS pin, uploaded photos, and generated an initial M2 score (`property-fitness-v1`).
+- **Shortlisted**: The BD Manager has reviewed initial field evidence and marked the candidate promising enough for detailed evaluation or catchment surveys.
+- **Survey Requested**: The manager has requested M3 catchment ground-truth evidence. This automatically initializes a `CatchmentStudy` in the Survey Manager's workspace for zone partitioning and lane assignment.
+- **Under Review**: Catchment field observations have completed (or existing verified study coverage was reused), appending a versioned M3 score (`property-fitness-v2-catchment`). The manager reviews combined property and catchment evidence.
+- **Approved**: The manager advances the property within the SiteScout decision workflow based on validated evidence. *(Note: This represents operational recommendation within SiteScout, not legal, lease, or final store-opening authorization).*
+- **Rejected**: The manager decides not to advance the property and logs a mandatory audit reason. Rejected candidates remain visible with full provenance.
 
 Area Intelligence does not fetch or render the saved-report list until **View saved reports** is opened. The manager dashboard separately fetches report summaries to show an actual attention count. Report cards open a focused, direct-linkable detail with **Close**, Escape, comparison, original geometry, and **Why this score?**.
 

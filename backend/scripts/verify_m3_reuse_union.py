@@ -8,6 +8,7 @@ from pyproj import Transformer
 from shapely.geometry import MultiPolygon, box
 from shapely.ops import transform
 from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
 
 from app.api.dependencies import DEMO_USERS
 from app.core.config import get_settings
@@ -103,12 +104,28 @@ def run_scenario(report_id: UUID, target: MultiPolygon, source_specs: list[tuple
         return result
 
 
+def choose_uncovered_box(db: Session) -> MultiPolygon:
+    existing = db.scalars(select(CatchmentStudy.target_geometry).where(CatchmentStudy.status == "completed")).all()
+    completed = [to_shape(geom) for geom in existing if geom is not None]
+    candidates = (
+        (80.061, 12.761), (80.101, 12.761), (80.141, 12.761), (80.281, 12.761),
+        (80.321, 12.761), (80.061, 13.101), (80.321, 13.101), (80.061, 13.241),
+        (80.121, 13.241), (80.281, 13.241), (80.321, 13.241), (80.151, 13.151),
+        (80.221, 13.051), (80.181, 12.851),
+    )
+    for west, south in candidates:
+        candidate = box(west, south, west + 0.02, south + 0.02)
+        if all(candidate.distance(geometry) > 0.025 for geometry in completed):
+            return MultiPolygon([candidate])
+    return MultiPolygon([box(80.321, 13.241, 80.341, 13.261)])
+
+
 def main() -> None:
     settings = get_settings()
     now = datetime.now(UTC)
     fixture_name = f"Reuse verification area {uuid4()}"
-    isolated_area = MultiPolygon([box(80.061, 12.761, 80.081, 12.781)])
     with SessionLocal() as db:
+        isolated_area = choose_uncovered_box(db)
         area = Area(
             name=fixture_name,
             selection_method="cells",

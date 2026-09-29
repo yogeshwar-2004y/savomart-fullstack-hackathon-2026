@@ -7,7 +7,11 @@ import type { MappedLaneSuggestion } from "../services/m3";
 type Shape = { geometry: GeoJSONGeometry; color: string; label?: string };
 
 export function CatchmentMap({
-  shapes, point, onPointChange, lanes = [], surveyPoints = []
+  shapes,
+  point,
+  onPointChange,
+  lanes = [],
+  surveyPoints = [],
 }: {
   shapes: Shape[];
   point?: { latitude: number; longitude: number };
@@ -15,16 +19,69 @@ export function CatchmentMap({
   lanes?: Array<MappedLaneSuggestion & { included: boolean }>;
   surveyPoints?: Array<{ latitude: number; longitude: number; flagged: boolean }>;
 }) {
-  return <div className="operational-map-shell"><MapContainer className="catchment-map" center={[12.98, 80.22]} zoom={14} scrollWheelZoom>
-    <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-    {shapes.map((shape, index) => <GeoJSON key={`${shape.label}-${index}`} data={shape.geometry as GeoJSON.GeoJsonObject} style={{ color: shape.color, fillOpacity: .12, weight: 3 }} />)}
-    {lanes.map((lane) => <GeoJSON key={lane.id} data={lane.geometry as GeoJSON.GeoJsonObject} style={{ color: lane.included ? "#087f91" : "#77737b", weight: lane.included ? 5 : 3, opacity: lane.included ? .9 : .55 }} />)}
-    {surveyPoints.map((item, index) => <CircleMarker key={`${item.latitude}-${item.longitude}-${index}`} center={[item.latitude, item.longitude]} radius={6} pathOptions={{ color: "#fff", weight: 2, fillColor: item.flagged ? "#b42318" : "#16835f", fillOpacity: 1 }} />)}
-    {point ? <Marker position={[point.latitude, point.longitude]} draggable={!!onPointChange} eventHandlers={{ dragend: (event) => { const next = (event.target as L.Marker).getLatLng(); onPointChange?.(next.lat, next.lng); } }} /> : null}
-    {onPointChange ? <MapPoint onChange={onPointChange} /> : null}
-    <Fit shapes={shapes} />
-    <ResizeMap />
-  </MapContainer><div className="map-overlay-legend compact" aria-label="Catchment map legend"><span><i className="overlay-boundary" />Catchment</span><span><i className="overlay-zone" />Survey zone</span>{lanes.length ? <span><i className="overlay-lane" />Mapped lane</span> : null}{surveyPoints.length ? <span><i className="overlay-survey" />Observation</span> : null}{point ? <span><i className="overlay-point" />Target / survey point</span> : null}</div></div>;
+  return (
+    <div className="operational-map-shell">
+      <MapContainer className="catchment-map" center={[12.98, 80.22]} zoom={14} scrollWheelZoom>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        {shapes.map((shape, index) => (
+          <GeoJSON
+            key={`${shape.label}-${index}`}
+            data={shape.geometry as GeoJSON.GeoJsonObject}
+            style={{ color: shape.color || "#782B90", fillOpacity: 0.14, weight: 3 }}
+          />
+        ))}
+        {lanes.map((lane) => (
+          <GeoJSON
+            key={lane.id}
+            data={lane.geometry as GeoJSON.GeoJsonObject}
+            style={{
+              color: lane.included ? "#782B90" : "#a19da6",
+              weight: lane.included ? 5 : 2.5,
+              opacity: lane.included ? 0.95 : 0.45,
+            }}
+          />
+        ))}
+        {surveyPoints.map((item, index) => (
+          <CircleMarker
+            key={`${item.latitude}-${item.longitude}-${index}`}
+            center={[item.latitude, item.longitude]}
+            radius={6}
+            pathOptions={{
+              color: "#fff",
+              weight: 2,
+              fillColor: item.flagged ? "#b42318" : "#16835f",
+              fillOpacity: 1,
+            }}
+          />
+        ))}
+        {point ? (
+          <Marker
+            position={[point.latitude, point.longitude]}
+            draggable={!!onPointChange}
+            eventHandlers={{
+              dragend: (event) => {
+                const next = (event.target as L.Marker).getLatLng();
+                onPointChange?.(next.lat, next.lng);
+              },
+            }}
+          />
+        ) : null}
+        {onPointChange ? <MapPoint onChange={onPointChange} /> : null}
+        <Fit shapes={shapes} />
+        <ResizeMap />
+      </MapContainer>
+      <div className="map-overlay-legend compact" aria-label="Catchment map legend">
+        <span><i className="overlay-boundary" /> Target Catchment</span>
+        <span><i className="overlay-zone" /> Survey Zone</span>
+        {lanes.length ? <span><i className="overlay-lane" /> Mapped Lane</span> : null}
+        {surveyPoints.length ? <span><i className="overlay-survey" /> Field Observation</span> : null}
+        {point ? <span><i className="overlay-point" /> Location Pin</span> : null}
+      </div>
+    </div>
+  );
 }
 
 function MapPoint({ onChange }: { onChange: (latitude: number, longitude: number) => void }) {

@@ -130,3 +130,11 @@ class StageChange(BaseModel):
     stage: PipelineStage
     reason: str = Field(min_length=3, max_length=1000)
 
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        cleaned = value.strip()
+        if len(cleaned) < 3:
+            raise ValueError("Reason must be at least 3 non-whitespace characters long")
+        return cleaned
+

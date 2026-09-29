@@ -14,6 +14,7 @@ from app.core.config import Settings, get_settings
 from app.db.models import (
     Area,
     AreaReport,
+    CatchmentStudy,
     Property,
     PropertyEvaluation,
     PropertyPhoto,
@@ -209,6 +210,14 @@ def move_stage(db: Session, prop: Property, target: str, reason: str, principal:
         property_id=prop.id, from_stage=previous, to_stage=target,
         actor_id=principal.id, actor_name=principal.name, reason=reason,
     ))
+    if target == "survey_requested":
+        existing_study = db.scalar(
+            select(CatchmentStudy).where(CatchmentStudy.property_id == prop.id)
+        )
+        if not existing_study:
+            from app.m3_surveys.schemas import StudyCreate
+            from app.m3_surveys.service import create_study
+            create_study(db, StudyCreate(target_type="property", target_id=prop.id), principal)
     db.commit()
     return get_property_record(db, prop.id)  # type: ignore[return-value]
 

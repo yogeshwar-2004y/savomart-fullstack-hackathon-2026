@@ -210,6 +210,17 @@ def get_study(db: Session, study_id: UUID) -> CatchmentStudy | None:
 
 
 def list_studies(db: Session, principal: Principal) -> list[CatchmentStudy]:
+    if principal.role in {"bd-manager", "survey-manager"}:
+        unstudied = db.scalars(
+            select(Property)
+            .where(Property.stage == "survey_requested")
+            .where(~Property.id.in_(select(CatchmentStudy.property_id).where(CatchmentStudy.property_id.isnot(None))))
+        ).all()
+        for prop in unstudied:
+            try:
+                create_study(db, StudyCreate(target_type="property", target_id=prop.id), principal)
+            except Exception:
+                pass
     query = _study_query().order_by(CatchmentStudy.created_at.desc())
     if principal.role == "survey-executive":
         query = query.join(SurveyZone).where(SurveyZone.assignee_id == principal.id).distinct()

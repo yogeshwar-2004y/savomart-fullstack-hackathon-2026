@@ -59,11 +59,38 @@ export function AreaMap({ geometry, suggestions, stores, cellMode, onCellClick }
       <MapEvents enabled={cellMode} onCellClick={onCellClick} />
       <ResizeMap />
       <FitGeometry geometry={geometry} />
-      {geometry ? <GeoJSON key={JSON.stringify(geometry)} data={geometry as GeoJsonObject} style={{ color: "#782B90", weight: 3, fillColor: "#FFF200", fillOpacity: 0.22 }} /> : null}
-      {stores.map((store) => <Marker key={store.store_code} position={[store.latitude, store.longitude]} icon={storeIcon} zIndexOffset={500}><Popup><strong>SAVOmart {store.name}</strong><p>{store.address}</p><small>{store.source_status} · source fetched {new Date(store.retrieved_at).toLocaleString()}</small></Popup></Marker>)}
+      {geometry ? (
+        <GeoJSON
+          key={JSON.stringify(geometry)}
+          data={geometry as GeoJsonObject}
+          style={{ color: "#782B90", weight: 3, fillColor: "#782B90", fillOpacity: 0.16 }}
+        />
+      ) : null}
+      {stores.map((store) => (
+        <Marker key={store.store_code} position={[store.latitude, store.longitude]} icon={storeIcon} zIndexOffset={500}>
+          <Popup>
+            <div className="savo-map-popup">
+              <strong>SAVOmart {store.name}</strong>
+              <p>{store.address}</p>
+              <small>{store.source_status} · snapshot {new Date(store.retrieved_at).toLocaleDateString()}</small>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
       {suggestions.map((suggestion) => (
-        <CircleMarker key={`${suggestion.rank}-${suggestion.latitude}`} center={[suggestion.latitude, suggestion.longitude]} radius={8} pathOptions={{ color: "#fff", weight: 2, fillColor: "#E25430", fillOpacity: 1 }}>
-          <Popup><strong>{suggestion.rank}. {suggestion.label}</strong><p>{suggestion.rationale}</p><small>Open the saved report below to assign this hotspot.</small></Popup>
+        <CircleMarker
+          key={`${suggestion.rank}-${suggestion.latitude}`}
+          center={[suggestion.latitude, suggestion.longitude]}
+          radius={8}
+          pathOptions={{ color: "#ffffff", weight: 2.5, fillColor: "#782B90", fillOpacity: 1 }}
+        >
+          <Popup>
+            <div className="savo-map-popup">
+              <strong>{suggestion.rank}. {suggestion.label}</strong>
+              <p>{suggestion.rationale}</p>
+              <small>Hotspot suggestion</small>
+            </div>
+          </Popup>
         </CircleMarker>
       ))}
     </MapContainer>

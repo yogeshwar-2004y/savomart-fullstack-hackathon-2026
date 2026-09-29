@@ -1,0 +1,97 @@
+services:
+  # ==========================================================
+  # 1. FastAPI Backend API Service
+  # ==========================================================
+  - type: web
+    name: sitescout-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    region: oregon
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sitescout-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: sitescout-redis
+          property: connectionString
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: ALLOW_SIMULATED_SIGNAL_FALLBACK
+        value: "true"
+      - key: PROPERTY_PHOTO_STORAGE_PATH
+        value: "/app/storage/property-photos"
+    disk:
+      name: property-photos-disk
+      mountPath: /app/storage/property-photos
+      sizeGB: 10
+
+  # ==========================================================
+  # 2. Redis/RQ Background Enrichment & Scoring Worker
+  # ==========================================================
+  - type: worker
+    name: sitescout-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: python -m app.jobs.worker
+    plan: starter
+    region: oregon
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sitescout-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: sitescout-redis
+          property: connectionString
+      - key: ALLOW_SIMULATED_SIGNAL_FALLBACK
+        value: "true"
+
+  # ==========================================================
+  # 3. React Frontend Web Application (Static Site)
+  # ==========================================================
+  - type: web
+    name: sitescout-frontend
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: ./frontend/dist
+    region: oregon
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: sitescout-api
+          property: host
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+# ============================================================
+# Databases & Infrastructure Add-ons
+# ============================================================
+databases:
+  - name: sitescout-postgres
+    databaseName: sitescout
+    user: sitescout
+    plan: starter
+    region: oregon
+    postgresMajorVersion: 16
+
+  - type: redis
+    name: sitescout-redis
+    plan: starter
+    region: oregon
+    ipAllowList: []
