@@ -1404,6 +1404,9 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 
 /* Shared routed-screen patterns */
 body { background: var(--canvas); }
+@media (pointer: fine) {
+  body { cursor: url("/savo-cursor.svg") 3 2, auto; }
+}
 button:not(:disabled), a, summary, label:has(input[type="checkbox"]) { cursor: pointer; }
 input:not([type="checkbox"]):not([type="radio"]), textarea { cursor: text; }
 select { cursor: pointer; }
