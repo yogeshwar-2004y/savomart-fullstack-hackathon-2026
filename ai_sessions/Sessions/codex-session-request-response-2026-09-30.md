@@ -61,11 +61,3 @@ Create an AI session history for this chat focused on the project history.
 ## Response 8
 
 A session history file was added under `ai_sessions/Sessions/`.
-
-## Request 9
-
-Keep the session file to request and response entries only, without evaluation sections or other material.
-
-## Response 9
-
-The session file was rewritten as request and response entries only.
