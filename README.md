@@ -6,6 +6,14 @@ Savo SiteScout is a Chennai expansion workspace for Savomart. This repository im
 
 **URL:** [https://savo-sitescout-yogesh-2026.southindia.cloudapp.azure.com/](https://savo-sitescout-yogesh-2026.southindia.cloudapp.azure.com/)
 
+USE :
+
+    USERNAME : sitescout
+    PASSWORD : 489bb61ee98e810b8115aea7ec9e034d5f276d4c9178c697
+
+The sitescout sign-in is a temporary gate for the public Azure demo. The app’s in-page role selector is demo identity, not authentication; the shared password prevents unrestricted access but does not provide separate user accounts.
+
+
 The browser asks for a username and password before showing the app. Use username `sitescout`; the password is stored only in the ignored local `.deploy/demo-password` file on the deploying machine. This **shared outer gate** keeps a publicly reachable hackathon VM from being completely open. It is necessary because the in-app role/user selector sends demo identity headers, **not** verified user credentials. Anyone with the shared password can switch between demo roles, so do not enter confidential production data. Replace both mechanisms with real per-user authentication before production. See the [Azure demo runbook](deploy/README.md) for operations and credit control.
 
 ## Workflow at a glance
