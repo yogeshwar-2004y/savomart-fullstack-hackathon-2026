@@ -2,19 +2,9 @@
 
 Savo SiteScout is a Chennai expansion workspace for Savomart. This repository implements the complete **M1 Area Intelligence → M2 Property Scouting → M3 Catchment Study** loop. A BD Manager can carry a real Chennai area from virtual analysis through property scouting, field-survey operations, versioned evaluation, and an audited decision.
 
-## Open the deployed demo
+## Deployment status
 
-**URL:** [https://savo-sitescout-yogesh-2026.southindia.cloudapp.azure.com/](https://savo-sitescout-yogesh-2026.southindia.cloudapp.azure.com/)
-
-USE :
-
-    USERNAME : sitescout
-    PASSWORD : 489bb61ee98e810b8115aea7ec9e034d5f276d4c9178c697
-
-The sitescout sign-in is a temporary gate for the public Azure demo. The app’s in-page role selector is demo identity, not authentication; the shared password prevents unrestricted access but does not provide separate user accounts.
-
-
-The browser asks for a username and password before showing the app. Use username `sitescout`; the password is stored only in the ignored local `.deploy/demo-password` file on the deploying machine. This **shared outer gate** keeps a publicly reachable hackathon VM from being completely open. It is necessary because the in-app role/user selector sends demo identity headers, **not** verified user credentials. Anyone with the shared password can switch between demo roles, so do not enter confidential production data. Replace both mechanisms with real per-user authentication before production. See the [Azure demo runbook](deploy/README.md) for operations and credit control.
+The Azure hackathon demo was retired on 2026-10-04. The dedicated `rg-savo-sitescout-demo` resource group, including its VM, disk, public IP, and network resources, was deleted; the former URL is no longer available. Run the project locally using the commands below. The in-app role/user selector remains a demo identity control, not production authentication.
 
 ## Workflow at a glance
 
@@ -52,7 +42,7 @@ flowchart TB
     API --> Photos[(Photo volume)]
 ```
 
-The Azure demo runs these services on one VM. The API, worker, database, and Redis are not exposed as public ports; Caddy serves the frontend and proxies `/api`. Uploaded photos and database data persist on VM Docker volumes, without automated off-VM backups. See the [deployment runbook](deploy/README.md) for maintenance and cost controls.
+The former Azure demo ran these services on one VM. Its Docker-volume database and uploaded photos were removed with that VM. See the [deployment record](deploy/README.md) for the retired configuration.
 
 ## Local startup
 
@@ -245,7 +235,7 @@ npm audit
 
 `backend/scripts/verify_full_workflow.py` creates an isolated Chennai map-cell analysis, uploads an actual in-memory JPEG with the property capture, completes a two-zone catchment study, retries the same lane-submission UUID, and verifies evaluation versions and decision history. It mutates the local development database and deliberately uses demo-labelled field observations. The two PostGIS verification scripts exercise metre-based property buffers and multi-study coverage-union reuse against the running database.
 
-The complete persona workflow has been verified locally through Docker Compose and the browser at `http://localhost:5173`. No deployed environment or production identity provider was tested. No LLM provider is configured or called at runtime; when AI is unavailable, saved deterministic evidence and rule-based explanations remain the entire scoring and explanation path.
+The complete persona workflow has been verified locally through Docker Compose and the browser at `http://localhost:5173`. Before retirement, the Azure API health check and scripted M1 to M2 to M3 workflow passed; that did not include a manual deployed-browser walkthrough. No production identity provider was tested. No LLM provider is configured or called at runtime; when AI is unavailable, saved deterministic evidence and rule-based explanations remain the entire scoring and explanation path.
 
 ## Current limitations
 
